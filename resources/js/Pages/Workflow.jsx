@@ -1,8 +1,9 @@
 import { Head, Link } from '@inertiajs/react';
 import { FlowEditor } from '@particle-academy/fancy-flow';
 import { Button, Heading, Text } from '@particle-academy/react-fancy';
+import { useState, useEffect } from 'react';
 
-const sampleGraph = {
+const defaultGraph = {
     nodes: [
         {
             id: 'trigger',
@@ -69,21 +70,11 @@ const executors = {
     trigger: () => ({ startedAt: Date.now(), hire: { name: 'Jordan', department: 'Engineering' } }),
     action: async ({ inputs, node }) => {
         await new Promise((r) => setTimeout(r, 600));
-        if (node.data.label.includes('Welcome Email')) {
-            return { emailSent: true, to: inputs.in?.hire?.name };
-        }
-        if (node.data.label.includes('Create Accounts')) {
-            return { github: true, slack: true, email: true };
-        }
-        if (node.data.label.includes('Dev Environment')) {
-            return { repoAccess: true, ciSetup: true };
-        }
-        if (node.data.label.includes('Design Tools')) {
-            return { figmaAccess: true, assetLibrary: true };
-        }
-        if (node.data.label.includes('Training')) {
-            return { modulesAssigned: 4, dueDate: '2026-06-30' };
-        }
+        if (node.data.label.includes('Welcome Email')) return { emailSent: true, to: inputs.in?.hire?.name };
+        if (node.data.label.includes('Create Accounts')) return { github: true, slack: true, email: true };
+        if (node.data.label.includes('Dev Environment')) return { repoAccess: true, ciSetup: true };
+        if (node.data.label.includes('Design Tools')) return { figmaAccess: true, assetLibrary: true };
+        if (node.data.label.includes('Training')) return { modulesAssigned: 4, dueDate: '2026-06-30' };
         return inputs.in;
     },
     decision: ({ inputs }) => ({
@@ -93,6 +84,54 @@ const executors = {
 };
 
 export default function Workflow() {
+    const [graph, setGraph] = useState(defaultGraph);
+    const [savedId, setSavedId] = useState(null);
+    const [status, setStatus] = useState(null);
+
+    useEffect(() => {
+        fetch('/workflows')
+            .then((r) => r.json())
+            .then((data) => {
+                if (data.length > 0) {
+                    const latest = data[0];
+                    setGraph({ nodes: latest.nodes, edges: latest.edges });
+                    setSavedId(latest.id);
+                    setStatus('Loaded from database');
+                }
+            })
+            .catch(() => setStatus('Could not load from database'));
+    }, []);
+
+    const saveWorkflow = async () => {
+        setStatus('Saving...');
+        try {
+            const payload = {
+                name: 'Employee Onboarding',
+                description: 'Automates the full onboarding flow for new hires',
+                nodes: graph.nodes,
+                edges: graph.edges,
+            };
+
+            const url = savedId ? `/workflows/${savedId}` : '/workflows';
+            const method = savedId ? 'PUT' : 'POST';
+
+            const res = await fetch(url, {
+                method,
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
+                },
+                body: JSON.stringify(payload),
+            });
+
+            const data = await res.json();
+            setSavedId(data.id);
+            setStatus('Saved successfully!');
+        } catch {
+            setStatus('Save failed');
+        }
+    };
+
     return (
         <>
             <Head title="Employee Onboarding" />
@@ -108,16 +147,25 @@ export default function Workflow() {
                         </Text>
                     </div>
 
-                    <Link href="/">
-                        <Button variant="outline">Back home</Button>
-                    </Link>
+                    <div className="flex items-center gap-3">
+                        {status && (
+                            <Text className="text-sm text-gray-500">{status}</Text>
+                        )}
+                        <Button onClick={saveWorkflow} variant="primary">
+                            Save Workflow
+                        </Button>
+                        <Link href="/">
+                            <Button variant="outline">Back home</Button>
+                        </Link>
+                    </div>
                 </header>
 
                 <main className="flex-1 p-6">
                     <FlowEditor
-                        initial={sampleGraph}
+                        initial={graph}
                         executors={executors}
                         height={720}
+                        onChange={(g) => setGraph(g)}
                         metadata={{
                             name: 'Employee Onboarding',
                             description: 'Automates the full onboarding flow for new hires',
