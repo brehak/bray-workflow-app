@@ -75,14 +75,308 @@ const templates = {
 
 const blankGraph = { nodes: [], edges: [] };
 
-const executors = {
-    trigger: () => ({ startedAt: Date.now() }),
-    action: async ({ inputs }) => {
-        await new Promise((r) => setTimeout(r, 600));
+// ──────────────────────────────────────────────────────────────────────────
+// Executors
+//
+// fancy-flow resolves an executor by node id first, then by node kind, then by
+// "*" (see runFlow's pickExecutor). That lets each template register smart,
+// per-node executors keyed by node id while still falling back to the generic
+// kind-based handlers for any node the user adds by hand.
+//
+// Each executor accumulates a shared context object (`{ ...inputs.in, ... }`)
+// so data produced upstream stays available to decision nodes and the final
+// summary. `emit({ type: 'log', ... })` lines drive the run feed at the bottom,
+// telling a clear, human-readable story when Run is clicked.
+// ──────────────────────────────────────────────────────────────────────────
+
+const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// Short pseudo-id helper for realistic-looking references (auth codes, tracking
+// numbers, ticket ids, etc.).
+const rid = (prefix = '', len = 6) =>
+    `${prefix}${Math.random().toString(36).slice(2, 2 + len).toUpperCase()}`;
+
+const say = (emit, node, level, message) =>
+    emit({ type: 'log', nodeId: node.id, level, message });
+
+// Generic fallbacks — used for blank workflows and any hand-added node whose id
+// isn't recognized by a template-specific executor.
+const genericExecutors = {
+    trigger: ({ node, emit }) => {
+        say(emit, node, 'info', `Triggered "${node.data.label}"`);
+        return { startedAt: Date.now() };
+    },
+    action: async ({ node, inputs, emit }) => {
+        await wait(500);
+        say(emit, node, 'info', `Ran "${node.data.label}"`);
         return inputs.in ?? {};
     },
-    decision: ({ inputs }) => ({ branch: 'true' }),
-    output: ({ inputs }) => inputs.in,
+    decision: ({ node, inputs, emit }) => {
+        say(emit, node, 'info', `Evaluated "${node.data.label}" → true`);
+        return { branch: 'true', value: inputs.in };
+    },
+    output: ({ node, inputs, emit }) => {
+        say(emit, node, 'info', `Finished "${node.data.label}"`);
+        return inputs.in;
+    },
+};
+
+// ── Employee Onboarding ───────────────────────────────────────────────────
+const onboardingExecutors = {
+    trigger: async ({ node, emit }) => {
+        const employee = {
+            name: 'Ada Lovelace',
+            email: 'ada.lovelace@acme.com',
+            department: 'Engineering',
+            role: 'Senior Software Engineer',
+            startDate: '2026-06-15',
+            manager: 'Grace Hopper',
+        };
+        say(
+            emit,
+            node,
+            'info',
+            `New hire submitted: ${employee.name} — ${employee.role} (${employee.department}), starts ${employee.startDate}`,
+        );
+        return { employee };
+    },
+    'welcome-email': async ({ node, inputs, emit }) => {
+        await wait(500);
+        const { employee } = inputs.in;
+        const welcomeEmail = {
+            to: employee.email,
+            template: 'welcome-v3',
+            messageId: rid('msg_', 8),
+            sentAt: new Date().toISOString(),
+        };
+        say(emit, node, 'info', `Welcome email sent to ${employee.email} (template ${welcomeEmail.template})`);
+        return { ...inputs.in, welcomeEmail };
+    },
+    'create-accounts': async ({ node, inputs, emit }) => {
+        await wait(650);
+        const { employee } = inputs.in;
+        const first = employee.name.split(' ')[0].toLowerCase();
+        const accounts = {
+            github: `@${employee.name.toLowerCase().replace(/\s+/g, '-')}`,
+            slack: `@${first}`,
+            email: employee.email,
+        };
+        say(
+            emit,
+            node,
+            'info',
+            `Provisioned accounts → GitHub ${accounts.github}, Slack ${accounts.slack}, Email ${accounts.email}`,
+        );
+        return { ...inputs.in, accounts };
+    },
+    'department-check': ({ node, inputs, emit }) => {
+        const dept = inputs.in.employee.department;
+        const isEng = dept === 'Engineering';
+        say(
+            emit,
+            node,
+            'info',
+            `Routing by department: ${dept} → ${isEng ? 'Engineering track (dev environment)' : 'Design track (design tools)'}`,
+        );
+        return { branch: isEng ? 'true' : 'false', value: { ...inputs.in, track: isEng ? 'engineering' : 'design' } };
+    },
+    'setup-dev': async ({ node, inputs, emit }) => {
+        await wait(650);
+        const devEnv = {
+            laptop: 'MacBook Pro 16" M4',
+            repos: ['acme/web', 'acme/api'],
+            tools: ['VS Code', 'Docker', 'GitHub CLI'],
+            vpn: 'configured',
+        };
+        say(emit, node, 'info', `Dev environment ready — ${devEnv.laptop}, cloned ${devEnv.repos.length} repos, VPN configured`);
+        return { ...inputs.in, devEnv };
+    },
+    'setup-design': async ({ node, inputs, emit }) => {
+        await wait(650);
+        const designTools = {
+            figma: 'seat assigned',
+            adobeCC: 'license activated',
+            tools: ['Figma', 'Adobe CC', 'Zeplin'],
+        };
+        say(emit, node, 'info', `Design tools ready — Figma seat + Adobe CC license activated`);
+        return { ...inputs.in, designTools };
+    },
+    'assign-training': async ({ node, inputs, emit }) => {
+        await wait(500);
+        const courses =
+            inputs.in.track === 'engineering'
+                ? ['Security 101', 'Codebase Tour', 'On-call Basics']
+                : ['Security 101', 'Brand Guidelines', 'Design System 101'];
+        const training = { courses, dueBy: '2026-06-29', lms: 'workday-learning' };
+        say(emit, node, 'info', `Assigned ${courses.length} training courses (due ${training.dueBy}): ${courses.join(', ')}`);
+        return { ...inputs.in, training };
+    },
+    complete: ({ node, inputs, emit }) => {
+        const { employee, accounts, training } = inputs.in;
+        say(
+            emit,
+            node,
+            'info',
+            `✅ Onboarding complete for ${employee.name} — accounts live, ${training.courses.length} courses assigned. Welcome aboard!`,
+        );
+        return {
+            status: 'complete',
+            summary: { employee: employee.name, department: employee.department, accounts, trainingAssigned: training.courses.length },
+        };
+    },
+};
+
+// ── Order Processing ──────────────────────────────────────────────────────
+const orderExecutors = {
+    trigger: async ({ node, emit }) => {
+        const items = [
+            { sku: 'WID-101', name: 'Wireless Keyboard', qty: 1, price: 79.99 },
+            { sku: 'WID-204', name: 'USB-C Hub', qty: 1, price: 49.99 },
+        ];
+        const order = {
+            id: rid('ORD-', 5),
+            customer: 'Jordan Reyes',
+            email: 'jordan.reyes@gmail.com',
+            items,
+            total: +items.reduce((s, i) => s + i.price * i.qty, 0).toFixed(2),
+        };
+        say(emit, node, 'info', `Order ${order.id} placed by ${order.customer} — ${order.items.length} items, $${order.total}`);
+        return { order };
+    },
+    payment: async ({ node, inputs, emit }) => {
+        await wait(700);
+        const { order } = inputs.in;
+        const payment = {
+            method: 'Visa ****4242',
+            amount: order.total,
+            authCode: rid('AUTH', 6),
+            processor: 'Stripe',
+            status: 'approved',
+        };
+        say(emit, node, 'info', `Charged $${payment.amount} to ${payment.method} via ${payment.processor} — auth ${payment.authCode}`);
+        return { ...inputs.in, payment };
+    },
+    'payment-check': ({ node, inputs, emit }) => {
+        const approved = inputs.in.payment.status === 'approved';
+        say(
+            emit,
+            node,
+            approved ? 'info' : 'warn',
+            approved ? `Payment approved — proceeding to fulfillment` : `Payment ${inputs.in.payment.status} — order will be declined`,
+        );
+        return { branch: approved ? 'true' : 'false', value: inputs.in };
+    },
+    inventory: async ({ node, inputs, emit }) => {
+        await wait(600);
+        const { order } = inputs.in;
+        const inventory = {
+            warehouse: 'WH-WEST',
+            allInStock: true,
+            lines: order.items.map((i) => ({ sku: i.sku, qty: i.qty, onHand: 240 })),
+        };
+        say(emit, node, 'info', `Inventory check — all ${order.items.length} items in stock at ${inventory.warehouse}, reserved`);
+        return { ...inputs.in, inventory };
+    },
+    declined: ({ node, inputs, emit }) => {
+        say(emit, node, 'error', `✗ Order ${inputs.in.order.id} declined — payment not approved. Customer notified.`);
+        return { status: 'declined', orderId: inputs.in.order.id };
+    },
+    ship: async ({ node, inputs, emit }) => {
+        await wait(600);
+        const shipment = { carrier: 'UPS Ground', tracking: rid('1Z', 10), eta: '2026-06-11' };
+        say(emit, node, 'info', `Shipped via ${shipment.carrier} — tracking ${shipment.tracking}, ETA ${shipment.eta}`);
+        return { ...inputs.in, shipment };
+    },
+    complete: ({ node, inputs, emit }) => {
+        const { order, shipment } = inputs.in;
+        say(
+            emit,
+            node,
+            'info',
+            `✅ Order ${order.id} complete — $${order.total} shipped to ${order.customer}, tracking ${shipment.tracking}`,
+        );
+        return { status: 'complete', summary: { orderId: order.id, total: order.total, tracking: shipment.tracking } };
+    },
+};
+
+// ── Bug Report ────────────────────────────────────────────────────────────
+const bugReportExecutors = {
+    trigger: async ({ node, emit }) => {
+        const bug = {
+            id: rid('BUG-', 4),
+            title: 'Checkout button unresponsive on mobile Safari',
+            reporter: 'support@acme.com',
+            component: 'web/checkout',
+            environment: 'iOS 18 / Safari',
+        };
+        say(emit, node, 'info', `Bug reported ${bug.id}: "${bug.title}" in ${bug.component}`);
+        return { bug };
+    },
+    triage: async ({ node, inputs, emit }) => {
+        await wait(600);
+        const triage = { severity: 'critical', priority: 'P1', affectedUsers: 1280, assignee: 'on-call', sla: '4h' };
+        say(
+            emit,
+            node,
+            'warn',
+            `Triaged ${inputs.in.bug.id} → ${triage.priority} ${triage.severity}, ~${triage.affectedUsers.toLocaleString()} users affected (SLA ${triage.sla})`,
+        );
+        return { ...inputs.in, triage };
+    },
+    severity: ({ node, inputs, emit }) => {
+        const isCritical = inputs.in.triage.severity === 'critical';
+        say(
+            emit,
+            node,
+            isCritical ? 'warn' : 'info',
+            isCritical ? `Severity critical → fast-tracking a hotfix` : `Non-critical → scheduling into the backlog`,
+        );
+        return { branch: isCritical ? 'true' : 'false', value: inputs.in };
+    },
+    hotfix: async ({ node, inputs, emit }) => {
+        await wait(500);
+        const plan = {
+            engineer: 'Linus T.',
+            branch: `hotfix/${inputs.in.bug.id.toLowerCase()}`,
+            targetRelease: 'v4.2.1',
+        };
+        say(emit, node, 'info', `Hotfix assigned to ${plan.engineer} on ${plan.branch} → ${plan.targetRelease}`);
+        return { ...inputs.in, plan, route: 'hotfix' };
+    },
+    backlog: async ({ node, inputs, emit }) => {
+        await wait(500);
+        const plan = { ticket: rid('JIRA-', 4), sprint: 'Sprint 42', estimate: '3 pts' };
+        say(emit, node, 'info', `Added ${inputs.in.bug.id} to backlog as ${plan.ticket} (${plan.sprint}, ${plan.estimate})`);
+        return { ...inputs.in, plan, route: 'backlog' };
+    },
+    fix: async ({ node, inputs, emit }) => {
+        await wait(700);
+        const fix = {
+            commit: Math.random().toString(16).slice(2, 9),
+            testsPassed: '142/142',
+            pr: `acme/web#${4800 + Math.floor(Math.random() * 200)}`,
+        };
+        say(emit, node, 'info', `Fix verified for ${inputs.in.bug.id} — commit ${fix.commit}, tests ${fix.testsPassed}, ${fix.pr} merged`);
+        return { ...inputs.in, fix };
+    },
+    close: ({ node, inputs, emit }) => {
+        const { bug, route, fix } = inputs.in;
+        say(
+            emit,
+            node,
+            'info',
+            `✅ ${bug.id} closed via ${route === 'hotfix' ? 'hotfix' : 'backlog fix'} — ${fix.pr} shipped, tests ${fix.testsPassed}`,
+        );
+        return { status: 'closed', summary: { bug: bug.id, route, pr: fix.pr } };
+    },
+};
+
+// Each template's per-node executors layered over the generic kind-based
+// fallbacks, selected by the `type` URL parameter at render time.
+const executorsByType = {
+    onboarding: { ...genericExecutors, ...onboardingExecutors },
+    order: { ...genericExecutors, ...orderExecutors },
+    bugreport: { ...genericExecutors, ...bugReportExecutors },
 };
 
 export default function Workflow() {
@@ -91,6 +385,7 @@ export default function Workflow() {
     const savedId = params.get('id');
 
     const template = type && templates[type] ? templates[type] : null;
+    const executors = (type && executorsByType[type]) || genericExecutors;
 
     const [graph, setGraph] = useState(template ?? blankGraph);
     const [name, setName] = useState(template?.name ?? '');
