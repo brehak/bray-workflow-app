@@ -4,8 +4,10 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { AlertTriangle, Check } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import Logo from '../Components/Logo';
+import MiniCanvas from '../Components/MiniCanvas';
 import NavButton from '../Components/NavButton';
 import ThemeToggle from '../Components/ThemeToggle';
+import Tooltip from '../Components/Tooltip';
 import '../../css/card-glow.css';
 
 const templates = [
@@ -226,6 +228,12 @@ export default function WorkflowList({ workflows }) {
                                             key={workflow.id}
                                             className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-900"
                                         >
+                                            {/* Mini graph preview — simplified dots + lines, not the editor. */}
+                                            <MiniCanvas
+                                                nodes={workflow.nodes}
+                                                edges={workflow.edges}
+                                                className="mb-4"
+                                            />
                                             <Heading as="h3" size="lg" weight="semibold">
                                                 {workflow.name}
                                             </Heading>
@@ -250,23 +258,29 @@ export default function WorkflowList({ workflows }) {
                                                 </div>
                                             )}
                                             <div className="mt-4 flex gap-2">
-                                                <Link href={`/workflow?id=${workflow.id}`}>
-                                                    <Button variant="primary" size="sm">Load</Button>
-                                                </Link>
-                                                <Button
-                                                    variant="outline"
-                                                    size="sm"
-                                                    onClick={() => duplicateWorkflow(workflow)}
-                                                >
-                                                    Duplicate
-                                                </Button>
-                                                <Button
-                                                    variant="outline"
-                                                    size="sm"
-                                                    onClick={() => setPendingDelete(workflow)}
-                                                >
-                                                    Delete
-                                                </Button>
+                                                <Tooltip label="Open this workflow in the editor">
+                                                    <Link href={`/workflow?id=${workflow.id}`}>
+                                                        <Button variant="primary" size="sm">Load</Button>
+                                                    </Link>
+                                                </Tooltip>
+                                                <Tooltip label="Save a copy of this workflow">
+                                                    <Button
+                                                        variant="outline"
+                                                        size="sm"
+                                                        onClick={() => duplicateWorkflow(workflow)}
+                                                    >
+                                                        Duplicate
+                                                    </Button>
+                                                </Tooltip>
+                                                <Tooltip label="Delete this workflow">
+                                                    <Button
+                                                        variant="outline"
+                                                        size="sm"
+                                                        onClick={() => setPendingDelete(workflow)}
+                                                    >
+                                                        Delete
+                                                    </Button>
+                                                </Tooltip>
                                             </div>
                                         </div>
                                     ))}

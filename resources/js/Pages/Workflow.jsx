@@ -9,6 +9,7 @@ import confetti from 'canvas-confetti';
 import Logo from '../Components/Logo';
 import NavButton from '../Components/NavButton';
 import ThemeToggle from '../Components/ThemeToggle';
+import Tooltip from '../Components/Tooltip';
 import '../../css/flow-animations.css';
 
 const templates = {
@@ -682,8 +683,9 @@ function WorkflowEditor() {
             <Head title={name || 'New Workflow'} />
 
             <div className="flex min-h-screen flex-col bg-gray-50 dark:bg-gray-950">
-                {/* Accent banner showing which template is active */}
-                <div className={`h-1.5 w-full ${accent.bar}`} />
+                {/* Accent banner showing which template is active. transition-colors
+                    so the bar eases between accents when switching templates. */}
+                <div className={`h-1.5 w-full transition-colors duration-200 ${accent.bar}`} />
                 <header className="sticky top-0 z-50 flex items-center justify-between gap-4 border-b border-gray-200/60 bg-white/70 px-6 py-4 backdrop-blur-md transition-colors duration-300 dark:border-gray-800/60 dark:bg-gray-900/70">
                     <div className="flex items-center gap-3">
                         <Logo className="shrink-0 text-indigo-600 dark:text-indigo-400" />
@@ -736,7 +738,9 @@ function WorkflowEditor() {
                     </div>
 
                     <div className="flex items-center gap-3">
-                        <ThemeToggle />
+                        <Tooltip label="Toggle light / dark mode" placement="bottom">
+                            <ThemeToggle />
+                        </Tooltip>
                         {status && (
                             <Text className="text-sm text-gray-500">{status}</Text>
                         )}
@@ -747,46 +751,53 @@ function WorkflowEditor() {
                             transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
                             className="inline-flex items-center gap-1 rounded-full border border-white/40 bg-white/60 p-1 shadow-lg shadow-gray-900/5 backdrop-blur-md dark:border-white/10 dark:bg-gray-900/50 dark:shadow-black/20"
                         >
-                            <button
-                                type="button"
-                                onClick={saveWorkflow}
-                                title="Save Workflow"
-                                className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-semibold transition-colors hover:bg-black/5 dark:hover:bg-white/10 ${accent.text}`}
-                            >
-                                <Save size={16} aria-hidden="true" />
-                                <span className="hidden sm:inline">Save</span>
-                            </button>
+                            <Tooltip label="Save Workflow" placement="bottom">
+                                <button
+                                    type="button"
+                                    onClick={saveWorkflow}
+                                    className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-semibold transition-colors hover:bg-black/5 dark:hover:bg-white/10 ${accent.text}`}
+                                >
+                                    <Save size={16} aria-hidden="true" />
+                                    <span className="hidden sm:inline">Save</span>
+                                </button>
+                            </Tooltip>
 
                             <span className="h-5 w-px bg-gray-300/70 dark:bg-gray-600/50" aria-hidden="true" />
 
-                            <button
-                                type="button"
-                                onClick={exportJson}
-                                title="Export JSON"
-                                className="inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium text-gray-700 transition-colors hover:bg-black/5 dark:text-gray-200 dark:hover:bg-white/10"
-                            >
-                                <Download size={16} aria-hidden="true" />
-                                <span className="hidden sm:inline">Export</span>
-                            </button>
+                            <Tooltip label="Export JSON" placement="bottom">
+                                <button
+                                    type="button"
+                                    onClick={exportJson}
+                                    className="inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium text-gray-700 transition-colors hover:bg-black/5 dark:text-gray-200 dark:hover:bg-white/10"
+                                >
+                                    <Download size={16} aria-hidden="true" />
+                                    <span className="hidden sm:inline">Export</span>
+                                </button>
+                            </Tooltip>
 
                             <span className="h-5 w-px bg-gray-300/70 dark:bg-gray-600/50" aria-hidden="true" />
 
-                            <button
-                                type="button"
-                                onClick={importJson}
-                                title="Import JSON"
-                                className="inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium text-gray-700 transition-colors hover:bg-black/5 dark:text-gray-200 dark:hover:bg-white/10"
-                            >
-                                <Upload size={16} aria-hidden="true" />
-                                <span className="hidden sm:inline">Import</span>
-                            </button>
+                            <Tooltip label="Import JSON" placement="bottom">
+                                <button
+                                    type="button"
+                                    onClick={importJson}
+                                    className="inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium text-gray-700 transition-colors hover:bg-black/5 dark:text-gray-200 dark:hover:bg-white/10"
+                                >
+                                    <Upload size={16} aria-hidden="true" />
+                                    <span className="hidden sm:inline">Import</span>
+                                </button>
+                            </Tooltip>
                         </motion.div>
-                        <Link href="/workflows-list">
-                            <NavButton>Saved Workflows</NavButton>
-                        </Link>
-                        <Link href="/">
-                            <NavButton>Back home</NavButton>
-                        </Link>
+                        <Tooltip label="Browse your saved workflows" placement="bottom">
+                            <Link href="/workflows-list">
+                                <NavButton>Saved Workflows</NavButton>
+                            </Link>
+                        </Tooltip>
+                        <Tooltip label="Back to home" placement="bottom">
+                            <Link href="/">
+                                <NavButton>Back home</NavButton>
+                            </Link>
+                        </Tooltip>
                     </div>
                 </header>
 

@@ -90,10 +90,14 @@ export default function Welcome() {
                             </motion.div>
 
                             <motion.div variants={fadeUp} className="mt-10 flex flex-wrap items-center justify-center gap-3 sm:mt-12">
+                                {/* Both actions are equally-sized pills with matching hover/tap
+                                    motion; the filled vs. outline treatment carries the hierarchy. */}
                                 <Link href="/workflow">
-                                    <Button variant="primary" size="lg">
-                                        New Workflow
-                                    </Button>
+                                    <motion.div className="inline-flex" whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}>
+                                        <Button variant="primary" size="lg" className="rounded-full">
+                                            New Workflow
+                                        </Button>
+                                    </motion.div>
                                 </Link>
                                 <Link href="/workflows-list">
                                     <NavButton size="lg">Saved Workflows</NavButton>
@@ -120,19 +124,34 @@ export default function Welcome() {
                                     transition={{ type: 'spring', stiffness: 300, damping: 22 }}
                                     className="h-full"
                                 >
-                                    <Card variant="elevated" padding="lg" className="flex h-full flex-col">
-                                        <span className="text-3xl" aria-hidden="true">
+                                    <Card
+                                        variant="elevated"
+                                        padding="lg"
+                                        className="flex h-full flex-col rounded-2xl transition-shadow duration-300 hover:shadow-xl hover:shadow-indigo-500/5 dark:hover:shadow-indigo-400/10"
+                                    >
+                                        {/* Emoji in a tinted, ringed tile so the card reads as a product icon. */}
+                                        <span
+                                            className="inline-flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-gray-100 to-gray-200 text-2xl shadow-inner ring-1 ring-black/5 dark:from-gray-800 dark:to-gray-900 dark:ring-white/10"
+                                            aria-hidden="true"
+                                        >
                                             {feature.emoji}
                                         </span>
-                                        <Heading as="h3" size="lg" weight="semibold" className="mt-4">
+                                        <Heading
+                                            as="h3"
+                                            size="lg"
+                                            weight="bold"
+                                            className="mt-5 tracking-tight text-gray-900 dark:text-white"
+                                        >
                                             {feature.title}
                                         </Heading>
-                                        <Text className="mt-2 flex-1 text-sm text-gray-500 dark:text-gray-400">
+                                        <Text className="mt-2 flex-1 text-sm leading-relaxed text-gray-500 dark:text-gray-400">
                                             {feature.description}
                                         </Text>
-                                        <div className="mt-6">
+                                        <div className="mt-6 border-t border-gray-100 pt-5 dark:border-gray-800">
                                             <Link href={`/workflow?type=${feature.id}`}>
-                                                <Button variant="primary">Launch</Button>
+                                                <Button variant="primary" className="rounded-full">
+                                                    Launch
+                                                </Button>
                                             </Link>
                                         </div>
                                     </Card>

@@ -18,6 +18,31 @@
 }
 
 /* ---------------------------------------------------------------------------
+   Smooth color transitions
+   ---------------------------------------------------------------------------
+   Animate the three "theme" properties — background, border, and text color —
+   everywhere, so the light/dark switch, button hover states, and template
+   accent changes ease between states instead of snapping. Kept short (0.2s) and
+   limited to color properties only: transitioning layout/transform/opacity here
+   would make the UI feel sluggish, so those are intentionally excluded. Element-
+   specific utilities (e.g. Tailwind's `transition-colors`, with its own
+   duration) have higher specificity and still win where they're applied. */
+*,
+*::before,
+*::after {
+    transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+}
+
+/* Respect users who ask the OS to minimize motion. */
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        transition: none;
+    }
+}
+
+/* ---------------------------------------------------------------------------
    Scrollbars
    ---------------------------------------------------------------------------
    Two tiers:

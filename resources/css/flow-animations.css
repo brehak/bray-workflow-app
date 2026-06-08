@@ -66,6 +66,52 @@
     }
 }
 
+/* ── Canvas texture: subtle dot grid + edge vignette ────────────────────────
+ *
+ * fancy-flow is built on React Flow, whose default "dots" background renders an
+ * SVG <pattern> bound to the viewport transform — so the grid already scales and
+ * pans with the canvas for free. We only retune the dot color to be very subtle
+ * (it ships fairly prominent) and scope it to our editor so the minimap and any
+ * other React Flow instance are untouched.
+ *
+ * The selectors mirror React Flow's own (`.dots` on the pattern circle, plus the
+ * `pattern circle` fallback the package itself targets in dark mode) at a higher
+ * specificity (the extra `.workflow-editor` class) so these win without
+ * `!important`. Dots sit on the background layer, well below nodes, so node
+ * visibility and drag/drop are unaffected. */
+.workflow-editor .react-flow__background-pattern.dots,
+.workflow-editor .react-flow__background pattern circle {
+    /* near-invisible gray dots on the white canvas */
+    fill: rgba(17, 24, 39, 0.07);
+}
+.dark .workflow-editor .react-flow__background-pattern.dots,
+.dark .workflow-editor .react-flow__background pattern circle {
+    /* On the near-black canvas a literal dark-gray dot would vanish, so we use a
+       faint light dot at low alpha — the standard design-tool look (Figma et al). */
+    fill: rgba(255, 255, 255, 0.06);
+}
+
+/* Soft inset vignette to give the canvas a sense of depth. A non-interactive
+   overlay (`pointer-events: none`) so it never blocks nodes, controls, or
+   drag/drop; the border-radius matches the canvas so it follows the rounded
+   corners. Center stays fully transparent — only the edges are darkened. */
+.workflow-editor {
+    position: relative;
+}
+.workflow-editor::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: 4;
+    pointer-events: none;
+    border-radius: 12px;
+    box-shadow: inset 0 0 80px 14px rgba(0, 0, 0, 0.05);
+}
+.dark .workflow-editor::after {
+    /* a touch deeper in dark mode for the same perceived subtlety against #0a0a0a */
+    box-shadow: inset 0 0 100px 18px rgba(0, 0, 0, 0.45);
+}
+
 /* ── Step 3: edges — flowing pulse along the connections while running ───── */
 .flow-running .react-flow__edge-path {
     stroke: #6366f1;
