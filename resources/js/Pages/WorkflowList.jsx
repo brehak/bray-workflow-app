@@ -4,7 +4,9 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { AlertTriangle, Check } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import Logo from '../Components/Logo';
+import NavButton from '../Components/NavButton';
 import ThemeToggle from '../Components/ThemeToggle';
+import '../../css/card-glow.css';
 
 const templates = [
     {
@@ -16,6 +18,8 @@ const templates = [
         // Accent gradient for the card's top edge (full literal classes so
         // Tailwind's scanner picks them up).
         accent: 'from-blue-500 to-indigo-500',
+        // Two-tone colors for the rotating hover border (blue → indigo).
+        glow: ['#3b82f6', '#6366f1'],
     },
     {
         id: 'order',
@@ -24,6 +28,7 @@ const templates = [
         nodes: 7,
         edges: 6,
         accent: 'from-green-500 to-emerald-400',
+        glow: ['#22c55e', '#34d399'], // green → emerald
     },
     {
         id: 'bugreport',
@@ -32,6 +37,7 @@ const templates = [
         nodes: 7,
         edges: 7,
         accent: 'from-red-500 to-orange-400',
+        glow: ['#ef4444', '#fb923c'], // red → orange
     },
 ];
 
@@ -116,7 +122,7 @@ export default function WorkflowList({ workflows }) {
                         <div className="flex items-center gap-3">
                             <ThemeToggle />
                             <Link href="/">
-                                <Button variant="outline">Back home</Button>
+                                <NavButton>Back home</NavButton>
                             </Link>
                         </div>
                     </div>
@@ -132,7 +138,8 @@ export default function WorkflowList({ workflows }) {
                         {templates.map((template) => (
                             <motion.div
                                 key={template.id}
-                                className="relative overflow-hidden rounded-xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-900"
+                                className="card-glow relative overflow-hidden rounded-xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-900"
+                                style={{ '--card-glow': template.glow[0], '--card-glow-2': template.glow[1] }}
                                 whileHover={{ y: -6, boxShadow: '0 20px 30px -10px rgba(0, 0, 0, 0.25)' }}
                                 transition={{ type: 'spring', stiffness: 300, damping: 22 }}
                             >

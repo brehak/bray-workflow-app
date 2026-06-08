@@ -2,6 +2,7 @@ import { Head, Link } from '@inertiajs/react';
 import { Button, Card, Heading, Text } from '@particle-academy/react-fancy';
 import { motion } from 'framer-motion';
 import Logo from '../Components/Logo';
+import NavButton from '../Components/NavButton';
 import ThemeToggle from '../Components/ThemeToggle';
 
 const features = [
@@ -56,7 +57,7 @@ export default function Welcome() {
                 <main className="flex flex-1 flex-col">
                     {/* Hero */}
                     <div className="bg-gradient-to-b from-blue-100/50 to-transparent dark:from-blue-950/40 dark:via-purple-950/20 dark:to-transparent">
-                        <section className="mx-auto w-full max-w-5xl px-6 pb-16 pt-16 text-center sm:pt-24">
+                        <section className="mx-auto w-full max-w-5xl px-6 pb-20 pt-20 text-center sm:pb-28 sm:pt-28 lg:pb-32 lg:pt-40">
                         <motion.div initial="hidden" animate="visible" variants={stagger}>
                             <motion.div variants={fadeUp}>
                                 <span className="inline-block rounded-full border border-gray-200 bg-white px-4 py-1.5 text-xs font-medium text-gray-600 shadow-sm dark:border-gray-800 dark:bg-gray-900 dark:text-gray-400">
@@ -66,29 +67,36 @@ export default function Welcome() {
 
                             <motion.h1
                                 variants={fadeUp}
-                                className="mt-6 text-4xl font-bold tracking-tight text-gray-900 dark:text-white sm:text-6xl"
+                                className="mx-auto mt-6 max-w-4xl bg-gradient-to-br from-blue-600 via-indigo-600 to-purple-600 bg-clip-text text-5xl font-extrabold leading-[1.05] tracking-tight text-transparent dark:from-blue-400 dark:via-indigo-400 dark:to-purple-400 sm:mt-8 sm:text-6xl md:text-7xl lg:text-8xl"
                             >
                                 Automate anything.{' '}
-                                <span className="text-indigo-600 dark:text-indigo-400">Visually.</span>
+                                <span className="relative inline-block">
+                                    Visually.
+                                    <motion.span
+                                        aria-hidden="true"
+                                        className="absolute -bottom-1 left-0 right-0 h-1 origin-left rounded-full bg-gradient-to-r from-blue-500 to-purple-500 sm:-bottom-2 sm:h-1.5"
+                                        initial={{ scaleX: 0 }}
+                                        animate={{ scaleX: 1 }}
+                                        transition={{ delay: 0.55, duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
+                                    />
+                                </span>
                             </motion.h1>
 
                             <motion.div variants={fadeUp}>
-                                <Text className="mx-auto mt-6 max-w-2xl text-lg text-gray-600 dark:text-gray-400">
+                                <Text className="mx-auto mt-6 max-w-2xl text-lg leading-relaxed text-gray-600 dark:text-gray-300 sm:mt-8 sm:text-xl">
                                     Design, run, and watch your processes come to life on an interactive canvas — from
                                     employee onboarding to order fulfillment and bug triage. No code required.
                                 </Text>
                             </motion.div>
 
-                            <motion.div variants={fadeUp} className="mt-8 flex flex-wrap items-center justify-center gap-3">
+                            <motion.div variants={fadeUp} className="mt-10 flex flex-wrap items-center justify-center gap-3 sm:mt-12">
                                 <Link href="/workflow">
                                     <Button variant="primary" size="lg">
                                         New Workflow
                                     </Button>
                                 </Link>
                                 <Link href="/workflows-list">
-                                    <Button variant="outline" size="lg">
-                                        Saved Workflows
-                                    </Button>
+                                    <NavButton size="lg">Saved Workflows</NavButton>
                                 </Link>
                             </motion.div>
                         </motion.div>
@@ -96,7 +104,7 @@ export default function Welcome() {
                     </div>
 
                     {/* Feature templates */}
-                    <section className="mx-auto w-full max-w-5xl px-6 pb-20">
+                    <section className="mx-auto w-full max-w-5xl px-6 pb-24 lg:pb-32">
                         <motion.div
                             className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3"
                             initial="hidden"

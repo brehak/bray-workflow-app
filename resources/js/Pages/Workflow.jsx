@@ -7,6 +7,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Workflow as WorkflowIcon, ArrowLeft } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import Logo from '../Components/Logo';
+import NavButton from '../Components/NavButton';
 import ThemeToggle from '../Components/ThemeToggle';
 import '../../css/flow-animations.css';
 
@@ -738,21 +739,13 @@ function WorkflowEditor() {
                         <Button onClick={saveWorkflow} variant="primary" color={accent.button}>
                             Save Workflow
                         </Button>
-                        <motion.div whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.96 }} className="inline-flex">
-                            <Button onClick={exportJson} variant="outline">
-                                Export JSON
-                            </Button>
-                        </motion.div>
-                        <motion.div whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.96 }} className="inline-flex">
-                            <Button onClick={importJson} variant="outline">
-                                Import JSON
-                            </Button>
-                        </motion.div>
+                        <NavButton onClick={exportJson}>Export JSON</NavButton>
+                        <NavButton onClick={importJson}>Import JSON</NavButton>
                         <Link href="/workflows-list">
-                            <Button variant="outline">Saved Workflows</Button>
+                            <NavButton>Saved Workflows</NavButton>
                         </Link>
                         <Link href="/">
-                            <Button variant="outline">Back home</Button>
+                            <NavButton>Back home</NavButton>
                         </Link>
                     </div>
                 </header>

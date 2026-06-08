@@ -1,0 +1,61 @@
+/*
+ * Animated rotating gradient border for template cards (shown on hover).
+ *
+ * Technique: a ::before fills the card, paints a two-tone conic gradient, and
+ * is masked to only its padding ring — i.e. a gradient *border*. The gradient's
+ * start angle is an @property-registered <angle> so it can be smoothly animated,
+ * giving a slow rotation. Drawing inside the card's own box means this survives
+ * the card's `overflow-hidden` and the framer-motion hover transform (both of
+ * which break the classic negative-z-index border trick). Per-card colors come
+ * from the `--card-glow` / `--card-glow-2` custom properties set inline.
+ */
+
+@property --card-glow-angle {
+    syntax: '<angle>';
+    initial-value: 0deg;
+    inherits: false;
+}
+
+.card-glow::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    padding: 2px; /* border thickness */
+    background: conic-gradient(
+        from var(--card-glow-angle),
+        var(--card-glow, #6366f1),
+        var(--card-glow-2, #a855f7),
+        var(--card-glow, #6366f1)
+    );
+    /* Reveal only the 2px padding ring → a gradient border. */
+    -webkit-mask:
+        linear-gradient(#000 0 0) content-box,
+        linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask:
+        linear-gradient(#000 0 0) content-box,
+        linear-gradient(#000 0 0);
+    mask-composite: exclude;
+    opacity: 0;
+    transition: opacity 0.4s ease;
+    animation: card-glow-rotate 3.5s linear infinite;
+    pointer-events: none;
+}
+
+.card-glow:hover::before {
+    opacity: 1;
+}
+
+@keyframes card-glow-rotate {
+    to {
+        --card-glow-angle: 360deg;
+    }
+}
+
+/* Respect reduced-motion: still show the border on hover, just don't spin it. */
+@media (prefers-reduced-motion: reduce) {
+    .card-glow::before {
+        animation: none;
+    }
+}
