@@ -3,6 +3,7 @@ import { Badge, Button, Heading, Text } from '@particle-academy/react-fancy';
 import { motion, AnimatePresence } from 'framer-motion';
 import { AlertTriangle, Check } from 'lucide-react';
 import { useState, useEffect } from 'react';
+import GradientDivider from '../Components/GradientDivider';
 import Logo from '../Components/Logo';
 import MiniCanvas from '../Components/MiniCanvas';
 import NavButton from '../Components/NavButton';
@@ -130,13 +131,16 @@ export default function WorkflowList({ workflows }) {
                     </div>
                 </header>
 
+                {/* Soft separator between the header and the page content */}
+                <GradientDivider />
+
                 <main className="flex-1 p-6 mx-auto w-full max-w-5xl">
 
                     {/* Templates Section */}
-                    <Heading as="h3" size="lg" weight="semibold" className="mb-3">
+                    <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
                         Templates
-                    </Heading>
-                    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 mb-10">
+                    </p>
+                    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 mb-8">
                         {templates.map((template) => (
                             <motion.div
                                 key={template.id}
@@ -165,10 +169,13 @@ export default function WorkflowList({ workflows }) {
                         ))}
                     </div>
 
+                    {/* Gradient divider between the Templates and Saved sections */}
+                    <GradientDivider className="mb-8" />
+
                     {/* Saved Workflows Section */}
-                    <Heading as="h3" size="lg" weight="semibold" className="mb-3">
+                    <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
                         Your Saved Workflows
-                    </Heading>
+                    </p>
                     {workflows.length === 0 ? (
                         <div className="flex flex-col items-center justify-center py-12 text-center rounded-xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900">
                             <Text className="text-gray-500">No workflows saved yet.</Text>

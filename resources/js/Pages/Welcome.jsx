@@ -1,6 +1,7 @@
 import { Head, Link } from '@inertiajs/react';
 import { Button, Card, Heading, Text } from '@particle-academy/react-fancy';
 import { motion } from 'framer-motion';
+import GradientDivider from '../Components/GradientDivider';
 import Logo from '../Components/Logo';
 import NavButton from '../Components/NavButton';
 import ThemeToggle from '../Components/ThemeToggle';
@@ -53,6 +54,9 @@ export default function Welcome() {
                     </div>
                     <ThemeToggle />
                 </nav>
+
+                {/* Soft separator between the header and the page content */}
+                <GradientDivider />
 
                 <main className="flex flex-1 flex-col">
                     {/* Hero */}

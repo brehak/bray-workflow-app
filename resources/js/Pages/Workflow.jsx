@@ -6,6 +6,7 @@ import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Workflow as WorkflowIcon, ArrowLeft, Save, Download, Upload } from 'lucide-react';
 import confetti from 'canvas-confetti';
+import GradientDivider from '../Components/GradientDivider';
 import Logo from '../Components/Logo';
 import NavButton from '../Components/NavButton';
 import ThemeToggle from '../Components/ThemeToggle';
@@ -800,6 +801,9 @@ function WorkflowEditor() {
                         </Tooltip>
                     </div>
                 </header>
+
+                {/* Soft separator between the header and the editor content */}
+                <GradientDivider />
 
                 <main className="flex-1 p-6">
                     <div className={`workflow-editor relative ${running ? 'flow-running' : ''}`}>
