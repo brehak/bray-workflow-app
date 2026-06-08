@@ -1,7 +1,8 @@
 import { Head, Link } from '@inertiajs/react';
 import { FlowEditor } from '@particle-academy/fancy-flow';
-import { Button, Heading, Text } from '@particle-academy/react-fancy';
-import { useState, useEffect } from 'react';
+import { useFlowRunnerUx } from '@particle-academy/fancy-flow/ux';
+import { Button, Heading, Text, Toast, useToast } from '@particle-academy/react-fancy';
+import { useState, useEffect, useMemo } from 'react';
 
 const templates = {
     onboarding: {
@@ -379,13 +380,92 @@ const executorsByType = {
     bugreport: { ...genericExecutors, ...bugReportExecutors },
 };
 
-export default function Workflow() {
+// ──────────────────────────────────────────────────────────────────────────
+// Toast notifications
+//
+// Per-node toast metadata, keyed by node id and selected by the `type` URL
+// param. Each entry maps a node's result to a toast that fires as the node
+// finishes, so a run surfaces friendly notifications ("Welcome Email Sent",
+// "Accounts Created", "Hotfix Assigned", …). Decision/trigger nodes are left
+// out so toasts only mark meaningful side effects.
+// ──────────────────────────────────────────────────────────────────────────
+const toastMetaByType = {
+    onboarding: {
+        'welcome-email': (r) => ({ title: 'Welcome Email Sent', description: `Sent to ${r.welcomeEmail.to}`, variant: 'success' }),
+        'create-accounts': (r) => ({ title: 'Accounts Created', description: `GitHub ${r.accounts.github} · Slack ${r.accounts.slack}`, variant: 'success' }),
+        'setup-dev': (r) => ({ title: 'Dev Environment Ready', description: r.devEnv.laptop, variant: 'success' }),
+        'setup-design': () => ({ title: 'Design Tools Ready', description: 'Figma seat + Adobe CC activated', variant: 'success' }),
+        'assign-training': (r) => ({ title: 'Training Assigned', description: `${r.training.courses.length} courses due ${r.training.dueBy}`, variant: 'info' }),
+        complete: (r) => ({ title: 'Onboarding Complete', description: `${r.summary.employee} is all set 🎉`, variant: 'success' }),
+    },
+    order: {
+        payment: (r) => ({ title: 'Payment Processed', description: `Charged $${r.payment.amount} to ${r.payment.method}`, variant: 'success' }),
+        inventory: (r) => ({ title: 'Inventory Reserved', description: `All items reserved at ${r.inventory.warehouse}`, variant: 'info' }),
+        ship: (r) => ({ title: 'Order Shipped', description: `${r.shipment.carrier} · ${r.shipment.tracking}`, variant: 'success' }),
+        declined: (r) => ({ title: 'Order Declined', description: `Order ${r.orderId} — payment not approved`, variant: 'error' }),
+        complete: (r) => ({ title: 'Order Complete', description: `Order ${r.summary.orderId} on its way`, variant: 'success' }),
+    },
+    bugreport: {
+        triage: (r) => ({ title: 'Bug Triaged', description: `${r.triage.priority} · ${r.triage.severity}`, variant: 'info' }),
+        hotfix: (r) => ({ title: 'Hotfix Assigned', description: `${r.plan.engineer} → ${r.plan.branch}`, variant: 'warning' }),
+        backlog: (r) => ({ title: 'Added to Backlog', description: `${r.plan.ticket} · ${r.plan.sprint}`, variant: 'info' }),
+        fix: (r) => ({ title: 'Fix Verified', description: `${r.fix.testsPassed} tests · ${r.fix.pr}`, variant: 'success' }),
+        close: (r) => ({ title: 'Bug Closed', description: `${r.summary.bug} resolved`, variant: 'success' }),
+    },
+};
+
+// Wrap an executor registry so each node fires its toast (via the `fire`
+// dispatcher) as it finishes — without touching the underlying executor logic.
+const withToasts = (registry, meta, fire) => {
+    const wrapped = {};
+    for (const [id, exec] of Object.entries(registry)) {
+        wrapped[id] = async (ctx) => {
+            const result = await exec(ctx);
+            const build = meta[id];
+            if (build) fire(build(result));
+            return result;
+        };
+    }
+    return wrapped;
+};
+
+function WorkflowEditor() {
     const params = new URLSearchParams(window.location.search);
     const type = params.get('type');
     const savedId = params.get('id');
 
     const template = type && templates[type] ? templates[type] : null;
-    const executors = (type && executorsByType[type]) || genericExecutors;
+
+    const { toast } = useToast();
+
+    // Host UX effects the flow can invoke. `toast` renders a notification via
+    // react-fancy's Toast provider; FlowRunnerUx turns it into both a runnable
+    // executor (kind `ux_toast`) and an imperative `dispatch('toast', …)`.
+    const ux = useFlowRunnerUx({
+        effects: {
+            toast: ({ title = 'Notification', description, variant = 'default', duration } = {}) =>
+                toast({ title, description, variant, duration }),
+        },
+        meta: {
+            toast: { label: 'Toast', description: 'Show a toast notification.', icon: '🔔', category: 'output' },
+        },
+    });
+
+    // Register the `ux_toast` palette node once so it can be dragged onto the
+    // canvas. `registerKinds` is idempotent.
+    useEffect(() => {
+        ux.registerKinds();
+    }, [ux]);
+
+    // Template executors, each wrapped to fire its toast as it finishes, merged
+    // with the UX effect executors (`ux_toast`) so hand-placed effect nodes run
+    // too. Memoized so the registry keeps a stable identity across renders.
+    const executors = useMemo(() => {
+        const base = (type && executorsByType[type]) || genericExecutors;
+        const meta = (type && toastMetaByType[type]) || {};
+        const fire = (notification) => ux.dispatch('toast', notification);
+        return { ...withToasts(base, meta, fire), ...ux.executors };
+    }, [type, ux]);
 
     const [graph, setGraph] = useState(template ?? blankGraph);
     const [name, setName] = useState(template?.name ?? '');
@@ -494,4 +574,14 @@ export default function Workflow() {
             </div>
         </>
     );
-} 
+}
+
+// Wrap the editor in the Toast provider so `useToast` (and therefore the flow's
+// `toast` UX effect) can render notifications.
+export default function Workflow() {
+    return (
+        <Toast.Provider position="bottom-right">
+            <WorkflowEditor />
+        </Toast.Provider>
+    );
+}
