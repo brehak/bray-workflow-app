@@ -2,7 +2,9 @@ import { Head, Link } from '@inertiajs/react';
 import { FlowEditor } from '@particle-academy/fancy-flow';
 import { useFlowRunnerUx } from '@particle-academy/fancy-flow/ux';
 import { Button, Heading, Text, Toast, useToast } from '@particle-academy/react-fancy';
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import confetti from 'canvas-confetti';
+import '../../css/flow-animations.css';
 
 const templates = {
     onboarding: {
@@ -414,15 +416,26 @@ const toastMetaByType = {
     },
 };
 
+// Celebratory confetti burst — fired when a run reaches a "Complete"/"Closed"
+// node (see the executor wrapper below).
+const fireConfetti = () => {
+    confetti({ particleCount: 120, spread: 75, origin: { y: 0.7 }, zIndex: 9999 });
+    confetti({ particleCount: 60, spread: 110, startVelocity: 45, origin: { y: 0.7 }, zIndex: 9999 });
+};
+
 // Wrap an executor registry so each node fires its toast (via the `fire`
 // dispatcher) as it finishes — without touching the underlying executor logic.
-const withToasts = (registry, meta, fire) => {
+// `hooks.onNodeStart` / `hooks.onNodeDone` let the host observe the run (used
+// here to drive the edge-flow animation and confetti).
+const withToasts = (registry, meta, fire, hooks = {}) => {
     const wrapped = {};
     for (const [id, exec] of Object.entries(registry)) {
         wrapped[id] = async (ctx) => {
+            hooks.onNodeStart?.(ctx.node);
             const result = await exec(ctx);
             const build = meta[id];
             if (build) fire(build(result));
+            hooks.onNodeDone?.(ctx.node, result);
             return result;
         };
     }
@@ -457,6 +470,36 @@ function WorkflowEditor() {
         ux.registerKinds();
     }, [ux]);
 
+    // `running` drives the edge-flow animation (the canvas wrapper gets the
+    // `flow-running` class while nodes are firing). FlowEditor owns its run loop
+    // and exposes no run-state, so we infer it from the executor wrapper: each
+    // node start refreshes a watchdog that switches the flow off shortly after
+    // the last node (or immediately once a terminal output node finishes).
+    const [running, setRunning] = useState(false);
+    const stopTimer = useRef(null);
+
+    const markRunning = useCallback(() => {
+        setRunning(true);
+        if (stopTimer.current) clearTimeout(stopTimer.current);
+        stopTimer.current = setTimeout(() => setRunning(false), 3500);
+    }, []);
+
+    const handleNodeStart = useCallback(() => markRunning(), [markRunning]);
+
+    const handleNodeDone = useCallback((node) => {
+        const label = node?.data?.label ?? '';
+        if (/complete|closed/i.test(label)) {
+            fireConfetti();
+        }
+        // Terminal output reached — stop the edge flow promptly.
+        if (node?.data?.kind === 'output') {
+            if (stopTimer.current) clearTimeout(stopTimer.current);
+            setRunning(false);
+        }
+    }, []);
+
+    useEffect(() => () => stopTimer.current && clearTimeout(stopTimer.current), []);
+
     // Template executors, each wrapped to fire its toast as it finishes, merged
     // with the UX effect executors (`ux_toast`) so hand-placed effect nodes run
     // too. Memoized so the registry keeps a stable identity across renders.
@@ -464,8 +507,11 @@ function WorkflowEditor() {
         const base = (type && executorsByType[type]) || genericExecutors;
         const meta = (type && toastMetaByType[type]) || {};
         const fire = (notification) => ux.dispatch('toast', notification);
-        return { ...withToasts(base, meta, fire), ...ux.executors };
-    }, [type, ux]);
+        return {
+            ...withToasts(base, meta, fire, { onNodeStart: handleNodeStart, onNodeDone: handleNodeDone }),
+            ...ux.executors,
+        };
+    }, [type, ux, handleNodeStart, handleNodeDone]);
 
     const [graph, setGraph] = useState(template ?? blankGraph);
     const [name, setName] = useState(template?.name ?? '');
@@ -560,16 +606,18 @@ function WorkflowEditor() {
                 </header>
 
                 <main className="flex-1 p-6">
-                    <FlowEditor
-                        initial={graph}
-                        executors={executors}
-                        height={720}
-                        onChange={(g) => setGraph(g)}
-                        metadata={{
-                            name,
-                            description,
-                        }}
-                    />
+                    <div className={running ? 'flow-running' : undefined}>
+                        <FlowEditor
+                            initial={graph}
+                            executors={executors}
+                            height={720}
+                            onChange={(g) => setGraph(g)}
+                            metadata={{
+                                name,
+                                description,
+                            }}
+                        />
+                    </div>
                 </main>
             </div>
         </>

@@ -1,5 +1,6 @@
 import { Head, Link, router } from '@inertiajs/react';
 import { Button, Heading, Text } from '@particle-academy/react-fancy';
+import { motion } from 'framer-motion';
 
 const templates = [
     {
@@ -60,9 +61,11 @@ export default function WorkflowList({ workflows }) {
                     </Heading>
                     <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 mb-10">
                         {templates.map((template) => (
-                            <div
+                            <motion.div
                                 key={template.id}
                                 className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-900"
+                                whileHover={{ y: -6, boxShadow: '0 20px 30px -10px rgba(0, 0, 0, 0.25)' }}
+                                transition={{ type: 'spring', stiffness: 300, damping: 22 }}
                             >
                                 <Heading as="h3" size="lg" weight="semibold">
                                     {template.title}
@@ -78,7 +81,7 @@ export default function WorkflowList({ workflows }) {
                                         <Button variant="primary">Launch</Button>
                                     </Link>
                                 </div>
-                            </div>
+                            </motion.div>
                         ))}
                     </div>
 
