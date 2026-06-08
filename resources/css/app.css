@@ -16,3 +16,87 @@
     --font-sans: 'Inter', 'Instrument Sans', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji',
         'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
 }
+
+/* ---------------------------------------------------------------------------
+   Scrollbars
+   ---------------------------------------------------------------------------
+   Two tiers:
+     1. A subtle global scrollbar so every page reads consistently.
+     2. A slightly more pronounced, theme-matched scrollbar scoped to the
+        workflow editor's scrollable panels (the node palette and the run /
+        event feed are the scrollable regions react-fancy renders inside the
+        `.workflow-editor` wrapper).
+   Each tier styles both the modern standard properties (Firefox) and the
+   WebKit/Blink pseudo-elements (Chrome, Safari, Edge). Track/thumb colors are
+   driven off the `.dark` class on <html> so they follow the app theme. */
+
+/* --- Global subtle scrollbar (whole app) --- */
+* {
+    scrollbar-width: thin;
+    /* thumb, track */
+    scrollbar-color: theme(colors.gray.300) transparent;
+}
+.dark * {
+    scrollbar-color: theme(colors.gray.700) transparent;
+}
+
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+::-webkit-scrollbar-thumb {
+    background-color: theme(colors.gray.300);
+    border-radius: 9999px;
+    transition: background-color 0.2s ease;
+}
+::-webkit-scrollbar-thumb:hover {
+    background-color: theme(colors.gray.400);
+}
+.dark ::-webkit-scrollbar-thumb {
+    background-color: theme(colors.gray.700);
+}
+.dark ::-webkit-scrollbar-thumb:hover {
+    background-color: theme(colors.gray.600);
+}
+
+/* --- Workflow editor panels (node palette + event feed) --- */
+.workflow-editor *,
+.workflow-editor {
+    scrollbar-width: thin;
+    /* light mode: medium-gray thumb on a light-gray track */
+    scrollbar-color: theme(colors.gray.400) theme(colors.gray.100);
+}
+.dark .workflow-editor *,
+.dark .workflow-editor {
+    /* dark mode: lighter-gray thumb on a dark-gray track */
+    scrollbar-color: theme(colors.gray.500) theme(colors.gray.800);
+}
+
+.workflow-editor ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+.workflow-editor ::-webkit-scrollbar-track {
+    background: theme(colors.gray.100);
+    border-radius: 9999px;
+}
+.workflow-editor ::-webkit-scrollbar-thumb {
+    background-color: theme(colors.gray.400);
+    border-radius: 9999px;
+    transition: background-color 0.2s ease;
+}
+.workflow-editor ::-webkit-scrollbar-thumb:hover {
+    background-color: theme(colors.gray.500);
+}
+.dark .workflow-editor ::-webkit-scrollbar-track {
+    background: theme(colors.gray.800);
+}
+.dark .workflow-editor ::-webkit-scrollbar-thumb {
+    background-color: theme(colors.gray.500);
+}
+.dark .workflow-editor ::-webkit-scrollbar-thumb:hover {
+    background-color: theme(colors.gray.400);
+}

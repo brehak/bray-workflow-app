@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" role="img" aria-label="Fancy Workflows">
+    <!-- Rounded brand-colored tile so the mark stays visible on any tab background -->
+    <rect width="24" height="24" rx="5" fill="#4f46e5"/>
+    <g transform="translate(12 12) scale(0.72) translate(-12 -12)"
+       fill="none" stroke="#ffffff" stroke-width="2.1"
+       stroke-linecap="round" stroke-linejoin="round">
+        <!-- connectors: both left nodes route into the right node -->
+        <path d="M8 6h4v6h4"/>
+        <path d="M8 18h4v-6"/>
+        <!-- nodes -->
+        <rect x="2" y="3" width="6" height="6" rx="1.5"/>
+        <rect x="2" y="15" width="6" height="6" rx="1.5"/>
+        <rect x="16" y="9" width="6" height="6" rx="1.5"/>
+    </g>
+</svg>

@@ -1,10 +1,10 @@
 import { Head, Link } from '@inertiajs/react';
 import { FlowEditor } from '@particle-academy/fancy-flow';
 import { useFlowRunnerUx } from '@particle-academy/fancy-flow/ux';
-import { Button, Heading, Pillbox, Text, Toast, useToast } from '@particle-academy/react-fancy';
+import { Heading, Pillbox, Text, Toast, useToast } from '@particle-academy/react-fancy';
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Workflow as WorkflowIcon, ArrowLeft } from 'lucide-react';
+import { Workflow as WorkflowIcon, ArrowLeft, Save, Download, Upload } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import Logo from '../Components/Logo';
 import NavButton from '../Components/NavButton';
@@ -456,18 +456,21 @@ const accentThemes = {
         bar: 'bg-blue-500',
         badge: 'bg-blue-100 text-blue-700 ring-blue-200 dark:bg-blue-500/15 dark:text-blue-300 dark:ring-blue-500/30',
         button: 'blue',
+        text: 'text-blue-600 dark:text-blue-400',
     },
     order: {
         label: 'Order',
         bar: 'bg-green-500',
         badge: 'bg-green-100 text-green-700 ring-green-200 dark:bg-green-500/15 dark:text-green-300 dark:ring-green-500/30',
         button: 'green',
+        text: 'text-green-600 dark:text-green-400',
     },
     bugreport: {
         label: 'Bug Report',
         bar: 'bg-red-500',
         badge: 'bg-red-100 text-red-700 ring-red-200 dark:bg-red-500/15 dark:text-red-300 dark:ring-red-500/30',
         button: 'red',
+        text: 'text-red-600 dark:text-red-400',
     },
 };
 
@@ -476,6 +479,7 @@ const neutralAccent = {
     bar: 'bg-gray-300 dark:bg-gray-700',
     badge: 'bg-gray-100 text-gray-600 ring-gray-200 dark:bg-gray-700/40 dark:text-gray-300 dark:ring-gray-600/40',
     button: 'gray',
+    text: 'text-gray-700 dark:text-gray-200',
 };
 
 // Quick-pick tags surfaced next to the tags input.
@@ -736,11 +740,47 @@ function WorkflowEditor() {
                         {status && (
                             <Text className="text-sm text-gray-500">{status}</Text>
                         )}
-                        <Button onClick={saveWorkflow} variant="primary" color={accent.button}>
-                            Save Workflow
-                        </Button>
-                        <NavButton onClick={exportJson}>Export JSON</NavButton>
-                        <NavButton onClick={importJson}>Import JSON</NavButton>
+                        {/* Floating glass toolbar: Save · Export · Import */}
+                        <motion.div
+                            initial={{ opacity: 0, y: -8, scale: 0.98 }}
+                            animate={{ opacity: 1, y: 0, scale: 1 }}
+                            transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
+                            className="inline-flex items-center gap-1 rounded-full border border-white/40 bg-white/60 p-1 shadow-lg shadow-gray-900/5 backdrop-blur-md dark:border-white/10 dark:bg-gray-900/50 dark:shadow-black/20"
+                        >
+                            <button
+                                type="button"
+                                onClick={saveWorkflow}
+                                title="Save Workflow"
+                                className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-semibold transition-colors hover:bg-black/5 dark:hover:bg-white/10 ${accent.text}`}
+                            >
+                                <Save size={16} aria-hidden="true" />
+                                <span className="hidden sm:inline">Save</span>
+                            </button>
+
+                            <span className="h-5 w-px bg-gray-300/70 dark:bg-gray-600/50" aria-hidden="true" />
+
+                            <button
+                                type="button"
+                                onClick={exportJson}
+                                title="Export JSON"
+                                className="inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium text-gray-700 transition-colors hover:bg-black/5 dark:text-gray-200 dark:hover:bg-white/10"
+                            >
+                                <Download size={16} aria-hidden="true" />
+                                <span className="hidden sm:inline">Export</span>
+                            </button>
+
+                            <span className="h-5 w-px bg-gray-300/70 dark:bg-gray-600/50" aria-hidden="true" />
+
+                            <button
+                                type="button"
+                                onClick={importJson}
+                                title="Import JSON"
+                                className="inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium text-gray-700 transition-colors hover:bg-black/5 dark:text-gray-200 dark:hover:bg-white/10"
+                            >
+                                <Upload size={16} aria-hidden="true" />
+                                <span className="hidden sm:inline">Import</span>
+                            </button>
+                        </motion.div>
                         <Link href="/workflows-list">
                             <NavButton>Saved Workflows</NavButton>
                         </Link>
@@ -751,7 +791,7 @@ function WorkflowEditor() {
                 </header>
 
                 <main className="flex-1 p-6">
-                    <div className={`relative ${running ? 'flow-running' : ''}`}>
+                    <div className={`workflow-editor relative ${running ? 'flow-running' : ''}`}>
                         <FlowEditor
                             key={editorKey}
                             initial={graph}
