@@ -6,6 +6,7 @@ import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Workflow as WorkflowIcon, ArrowLeft } from 'lucide-react';
 import confetti from 'canvas-confetti';
+import Logo from '../Components/Logo';
 import ThemeToggle from '../Components/ThemeToggle';
 import '../../css/flow-animations.css';
 
@@ -678,8 +679,10 @@ function WorkflowEditor() {
             <div className="flex min-h-screen flex-col bg-gray-50 dark:bg-gray-950">
                 {/* Accent banner showing which template is active */}
                 <div className={`h-1.5 w-full ${accent.bar}`} />
-                <header className="flex items-center justify-between gap-4 border-b border-gray-200 bg-white px-6 py-4 dark:border-gray-800 dark:bg-gray-900">
-                    <div className="flex flex-col gap-1">
+                <header className="sticky top-0 z-50 flex items-center justify-between gap-4 border-b border-gray-200/60 bg-white/70 px-6 py-4 backdrop-blur-md transition-colors duration-300 dark:border-gray-800/60 dark:bg-gray-900/70">
+                    <div className="flex items-center gap-3">
+                        <Logo className="shrink-0 text-indigo-600 dark:text-indigo-400" />
+                        <div className="flex flex-col gap-1">
                         <motion.span
                             initial={{ opacity: 0, y: -4 }}
                             animate={{ opacity: 1, y: 0 }}
@@ -723,6 +726,7 @@ function WorkflowEditor() {
                                     </button>
                                 ))}
                             </div>
+                        </div>
                         </div>
                     </div>
 

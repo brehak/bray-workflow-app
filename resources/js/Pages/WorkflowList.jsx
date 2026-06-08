@@ -3,6 +3,7 @@ import { Badge, Button, Heading, Text } from '@particle-academy/react-fancy';
 import { motion, AnimatePresence } from 'framer-motion';
 import { AlertTriangle, Check } from 'lucide-react';
 import { useState, useEffect } from 'react';
+import Logo from '../Components/Logo';
 import ThemeToggle from '../Components/ThemeToggle';
 
 const templates = [
@@ -12,6 +13,9 @@ const templates = [
         description: 'Automate the full onboarding process for new hires — accounts, tools, training and more.',
         nodes: 8,
         edges: 8,
+        // Accent gradient for the card's top edge (full literal classes so
+        // Tailwind's scanner picks them up).
+        accent: 'from-blue-500 to-indigo-500',
     },
     {
         id: 'order',
@@ -19,6 +23,7 @@ const templates = [
         description: 'Walk an order through the full fulfillment pipeline — payment, inventory, shipping and delivery.',
         nodes: 7,
         edges: 6,
+        accent: 'from-green-500 to-emerald-400',
     },
     {
         id: 'bugreport',
@@ -26,6 +31,7 @@ const templates = [
         description: 'Triage incoming bug reports, assign to the right developer, track fixes and close issues.',
         nodes: 7,
         edges: 7,
+        accent: 'from-red-500 to-orange-400',
     },
 ];
 
@@ -99,11 +105,14 @@ export default function WorkflowList({ workflows }) {
             <Head title="Saved Workflows" />
 
             <div className="flex min-h-screen flex-col bg-gray-50 dark:bg-gray-950">
-                <header className="border-b border-gray-200 bg-white px-6 py-4 dark:border-gray-800 dark:bg-gray-900">
+                <header className="sticky top-0 z-50 border-b border-gray-200/60 bg-white/70 px-6 py-4 backdrop-blur-md transition-colors duration-300 dark:border-gray-800/60 dark:bg-gray-900/70">
                     <div className="mx-auto flex max-w-5xl items-center justify-between">
-                        <Heading as="h2" size="xl" weight="semibold">
-                            Saved Workflows
-                        </Heading>
+                        <div className="flex items-center gap-2">
+                            <Logo className="text-indigo-600 dark:text-indigo-400" />
+                            <Heading as="h2" size="xl" weight="semibold">
+                                Saved Workflows
+                            </Heading>
+                        </div>
                         <div className="flex items-center gap-3">
                             <ThemeToggle />
                             <Link href="/">
@@ -123,10 +132,12 @@ export default function WorkflowList({ workflows }) {
                         {templates.map((template) => (
                             <motion.div
                                 key={template.id}
-                                className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-900"
+                                className="relative overflow-hidden rounded-xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-900"
                                 whileHover={{ y: -6, boxShadow: '0 20px 30px -10px rgba(0, 0, 0, 0.25)' }}
                                 transition={{ type: 'spring', stiffness: 300, damping: 22 }}
                             >
+                                {/* Accent gradient on the top edge */}
+                                <div className={`absolute inset-x-0 top-0 h-1 bg-gradient-to-r ${template.accent}`} />
                                 <Heading as="h3" size="lg" weight="semibold">
                                     {template.title}
                                 </Heading>

@@ -1,6 +1,7 @@
 import { Head, Link } from '@inertiajs/react';
 import { Button, Card, Heading, Text } from '@particle-academy/react-fancy';
 import { motion } from 'framer-motion';
+import Logo from '../Components/Logo';
 import ThemeToggle from '../Components/ThemeToggle';
 
 const features = [
@@ -40,13 +41,11 @@ export default function Welcome() {
         <>
             <Head title="Fancy Workflows" />
 
-            <div className="flex min-h-screen flex-col bg-gray-50 dark:bg-gray-950">
+            <div className="flex min-h-screen flex-col bg-gray-50 bg-[radial-gradient(ellipse_80%_50%_at_50%_-10%,rgba(59,130,246,0.08),transparent_70%)] transition-colors duration-300 dark:bg-gray-950 dark:bg-[radial-gradient(ellipse_80%_50%_at_50%_-10%,rgba(99,102,241,0.15),transparent_70%)]">
                 {/* Navigation */}
-                <nav className="flex items-center justify-between px-6 py-4 sm:px-10">
+                <nav className="sticky top-0 z-50 flex items-center justify-between border-b border-gray-200/60 bg-white/70 px-6 py-4 backdrop-blur-md transition-colors duration-300 dark:border-gray-800/60 dark:bg-gray-900/70 sm:px-10">
                     <div className="flex items-center gap-2">
-                        <span className="text-xl" aria-hidden="true">
-                            ⚡
-                        </span>
+                        <Logo className="text-indigo-600 dark:text-indigo-400" />
                         <Heading as="h2" size="lg" weight="semibold">
                             Fancy Workflows
                         </Heading>
@@ -56,7 +55,8 @@ export default function Welcome() {
 
                 <main className="flex flex-1 flex-col">
                     {/* Hero */}
-                    <section className="mx-auto w-full max-w-5xl px-6 pb-16 pt-16 text-center sm:pt-24">
+                    <div className="bg-gradient-to-b from-blue-100/50 to-transparent dark:from-blue-950/40 dark:via-purple-950/20 dark:to-transparent">
+                        <section className="mx-auto w-full max-w-5xl px-6 pb-16 pt-16 text-center sm:pt-24">
                         <motion.div initial="hidden" animate="visible" variants={stagger}>
                             <motion.div variants={fadeUp}>
                                 <span className="inline-block rounded-full border border-gray-200 bg-white px-4 py-1.5 text-xs font-medium text-gray-600 shadow-sm dark:border-gray-800 dark:bg-gray-900 dark:text-gray-400">
@@ -93,6 +93,7 @@ export default function Welcome() {
                             </motion.div>
                         </motion.div>
                     </section>
+                    </div>
 
                     {/* Feature templates */}
                     <section className="mx-auto w-full max-w-5xl px-6 pb-20">
