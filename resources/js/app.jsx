@@ -7,6 +7,11 @@ import { resolvePageComponent } from 'laravel-vite-plugin/inertia-helpers';
 import { createElement } from 'react';
 import { createRoot } from 'react-dom/client';
 import { AnimatePresence, motion } from 'framer-motion';
+import { getInitialTheme, applyTheme } from './hooks/useTheme';
+
+// Apply the stored (or system) theme before the app renders so there's no flash
+// of the wrong theme on load or when navigating between pages.
+applyTheme(getInitialTheme());
 
 const pageVariants = {
     initial: { opacity: 0, y: 16 },

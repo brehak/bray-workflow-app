@@ -4,6 +4,7 @@ import { useFlowRunnerUx } from '@particle-academy/fancy-flow/ux';
 import { Button, Heading, Text, Toast, useToast } from '@particle-academy/react-fancy';
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import confetti from 'canvas-confetti';
+import ThemeToggle from '../Components/ThemeToggle';
 import '../../css/flow-animations.css';
 
 const templates = {
@@ -590,6 +591,7 @@ function WorkflowEditor() {
                     </div>
 
                     <div className="flex items-center gap-3">
+                        <ThemeToggle />
                         {status && (
                             <Text className="text-sm text-gray-500">{status}</Text>
                         )}

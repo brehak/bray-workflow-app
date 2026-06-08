@@ -1,6 +1,7 @@
 import { Head, Link, router } from '@inertiajs/react';
 import { Button, Heading, Text } from '@particle-academy/react-fancy';
 import { motion } from 'framer-motion';
+import ThemeToggle from '../Components/ThemeToggle';
 
 const templates = [
     {
@@ -47,9 +48,12 @@ export default function WorkflowList({ workflows }) {
                         <Heading as="h2" size="xl" weight="semibold">
                             Saved Workflows
                         </Heading>
-                        <Link href="/">
-                            <Button variant="outline">Back home</Button>
-                        </Link>
+                        <div className="flex items-center gap-3">
+                            <ThemeToggle />
+                            <Link href="/">
+                                <Button variant="outline">Back home</Button>
+                            </Link>
+                        </div>
                     </div>
                 </header>
 

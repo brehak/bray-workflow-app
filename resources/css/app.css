@@ -1,5 +1,9 @@
 @import 'tailwindcss';
 
+/* Drive `dark:` utilities from a `.dark` class on <html> (toggled by useTheme)
+   instead of Tailwind v4's default prefers-color-scheme media query. */
+@custom-variant dark (&:where(.dark, .dark *));
+
 @source '../js/**/*.{js,jsx,tsx}';
 @source '../../node_modules/@particle-academy/react-fancy/dist/**/*.js';
 @source '../../vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php';
