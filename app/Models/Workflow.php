@@ -11,10 +11,12 @@ class Workflow extends Model
         'description',
         'nodes',
         'edges',
+        'tags',
     ];
 
     protected $casts = [
         'nodes' => 'array',
         'edges' => 'array',
+        'tags'  => 'array',
     ];
 } 

@@ -1,6 +1,8 @@
 import { Head, Link, router } from '@inertiajs/react';
-import { Button, Heading, Text } from '@particle-academy/react-fancy';
-import { motion } from 'framer-motion';
+import { Badge, Button, Heading, Text } from '@particle-academy/react-fancy';
+import { motion, AnimatePresence } from 'framer-motion';
+import { AlertTriangle, Check } from 'lucide-react';
+import { useState, useEffect } from 'react';
 import ThemeToggle from '../Components/ThemeToggle';
 
 const templates = [
@@ -28,8 +30,12 @@ const templates = [
 ];
 
 export default function WorkflowList({ workflows }) {
-    const deleteWorkflow = (id) => {
-        if (!confirm('Are you sure you want to delete this workflow?')) return;
+    // The workflow awaiting delete confirmation (null = modal closed).
+    const [pendingDelete, setPendingDelete] = useState(null);
+
+    const confirmDelete = () => {
+        const id = pendingDelete.id;
+        setPendingDelete(null);
         fetch(`/workflows/${id}`, {
             method: 'DELETE',
             headers: {
@@ -37,6 +43,56 @@ export default function WorkflowList({ workflows }) {
             },
         }).then(() => router.reload());
     };
+
+    // Close the confirmation modal on Escape.
+    useEffect(() => {
+        if (!pendingDelete) return;
+        const onKey = (e) => {
+            if (e.key === 'Escape') setPendingDelete(null);
+        };
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
+    }, [pendingDelete]);
+
+    // Transient success message, auto-dismissed after a moment.
+    const [status, setStatus] = useState(null);
+    useEffect(() => {
+        if (!status) return;
+        const t = setTimeout(() => setStatus(null), 2800);
+        return () => clearTimeout(t);
+    }, [status]);
+
+    // Duplicate a saved workflow: POST a copy (same nodes/edges/description,
+    // name prefixed with "Copy of ") then reload so it appears immediately.
+    // Mirrors the fetch pattern used for DELETE.
+    const duplicateWorkflow = (workflow) => {
+        fetch('/workflows', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
+            },
+            body: JSON.stringify({
+                name: `Copy of ${workflow.name}`,
+                description: workflow.description ?? '',
+                nodes: workflow.nodes,
+                edges: workflow.edges,
+                tags: workflow.tags ?? [],
+            }),
+        }).then(() => {
+            setStatus(`Duplicated “${workflow.name}”`);
+            router.reload();
+        });
+    };
+
+    // Tag filtering. `activeTag === null` means "All". Every tag used across the
+    // saved workflows becomes a filter chip.
+    const [activeTag, setActiveTag] = useState(null);
+    const allTags = [...new Set(workflows.flatMap((w) => w.tags ?? []))].sort();
+    const visibleWorkflows = activeTag
+        ? workflows.filter((w) => (w.tags ?? []).includes(activeTag))
+        : workflows;
+    const toggleTag = (tag) => setActiveTag((cur) => (cur === tag ? null : tag));
 
     return (
         <>
@@ -99,44 +155,182 @@ export default function WorkflowList({ workflows }) {
                             <Text className="text-sm text-gray-400 mt-1">Launch a template and hit Save to get started.</Text>
                         </div>
                     ) : (
-                        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                            {workflows.map((workflow) => (
-                                <div
-                                    key={workflow.id}
-                                    className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-900"
+                        <>
+                            {/* Tag filter bar */}
+                            {allTags.length > 0 && (
+                                <motion.div
+                                    initial={{ opacity: 0, y: -8 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    transition={{ duration: 0.3, ease: 'easeOut' }}
+                                    className="mb-4 flex flex-wrap items-center gap-2"
                                 >
-                                    <Heading as="h3" size="lg" weight="semibold">
-                                        {workflow.name}
-                                    </Heading>
-                                    {workflow.description && (
-                                        <Text className="mt-1 text-sm text-gray-500">
-                                            {workflow.description}
-                                        </Text>
-                                    )}
-                                    <Text className="mt-2 text-xs text-gray-400">
-                                        {workflow.nodes.length} nodes · {workflow.edges.length} edges
-                                    </Text>
-                                    <Text className="mt-1 text-xs text-gray-400">
-                                        Saved {new Date(workflow.created_at).toLocaleDateString()}
-                                    </Text>
-                                    <div className="mt-4 flex gap-2">
-                                        <Link href={`/workflow?id=${workflow.id}`}>
-                                            <Button variant="primary" size="sm">Load</Button>
-                                        </Link>
-                                        <Button
-                                            variant="outline"
-                                            size="sm"
-                                            onClick={() => deleteWorkflow(workflow.id)}
+                                    <Button
+                                        size="sm"
+                                        variant={activeTag === null ? 'primary' : 'outline'}
+                                        onClick={() => setActiveTag(null)}
+                                    >
+                                        All
+                                    </Button>
+                                    {allTags.map((tag) => (
+                                        <motion.div
+                                            key={tag}
+                                            whileHover={{ scale: 1.05 }}
+                                            whileTap={{ scale: 0.95 }}
+                                            className="inline-flex"
                                         >
-                                            Delete
-                                        </Button>
-                                    </div>
+                                            <Button
+                                                size="sm"
+                                                variant={activeTag === tag ? 'primary' : 'outline'}
+                                                onClick={() => toggleTag(tag)}
+                                            >
+                                                {tag}
+                                            </Button>
+                                        </motion.div>
+                                    ))}
+                                </motion.div>
+                            )}
+
+                            {visibleWorkflows.length === 0 ? (
+                                <div className="flex flex-col items-center justify-center py-12 text-center rounded-xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900">
+                                    <Text className="text-gray-500">No workflows tagged “{activeTag}”.</Text>
+                                    <button
+                                        type="button"
+                                        onClick={() => setActiveTag(null)}
+                                        className="mt-1 text-sm text-blue-600 hover:underline dark:text-blue-400"
+                                    >
+                                        Clear filter
+                                    </button>
                                 </div>
-                            ))}
-                        </div>
+                            ) : (
+                                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                                    {visibleWorkflows.map((workflow) => (
+                                        <div
+                                            key={workflow.id}
+                                            className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-900"
+                                        >
+                                            <Heading as="h3" size="lg" weight="semibold">
+                                                {workflow.name}
+                                            </Heading>
+                                            {workflow.description && (
+                                                <Text className="mt-1 text-sm text-gray-500">
+                                                    {workflow.description}
+                                                </Text>
+                                            )}
+                                            <Text className="mt-2 text-xs text-gray-400">
+                                                {workflow.nodes.length} nodes · {workflow.edges.length} edges
+                                            </Text>
+                                            <Text className="mt-1 text-xs text-gray-400">
+                                                Saved {new Date(workflow.created_at).toLocaleDateString()}
+                                            </Text>
+                                            {(workflow.tags?.length ?? 0) > 0 && (
+                                                <div className="mt-3 flex flex-wrap gap-1.5">
+                                                    {workflow.tags.map((tag) => (
+                                                        <Badge key={tag} variant="soft" size="sm" color="blue">
+                                                            {tag}
+                                                        </Badge>
+                                                    ))}
+                                                </div>
+                                            )}
+                                            <div className="mt-4 flex gap-2">
+                                                <Link href={`/workflow?id=${workflow.id}`}>
+                                                    <Button variant="primary" size="sm">Load</Button>
+                                                </Link>
+                                                <Button
+                                                    variant="outline"
+                                                    size="sm"
+                                                    onClick={() => duplicateWorkflow(workflow)}
+                                                >
+                                                    Duplicate
+                                                </Button>
+                                                <Button
+                                                    variant="outline"
+                                                    size="sm"
+                                                    onClick={() => setPendingDelete(workflow)}
+                                                >
+                                                    Delete
+                                                </Button>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </>
                     )}
                 </main>
             </div>
+
+            {/* Transient success toast */}
+            <AnimatePresence>
+                {status && (
+                    <motion.div
+                        className="fixed bottom-6 right-6 z-50 flex items-center gap-2 rounded-lg border border-green-200 bg-white px-4 py-3 shadow-lg dark:border-green-500/30 dark:bg-gray-900"
+                        initial={{ opacity: 0, y: 12 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: 12 }}
+                        transition={{ duration: 0.2 }}
+                    >
+                        <span className="flex h-5 w-5 items-center justify-center rounded-full bg-green-100 text-green-600 dark:bg-green-500/15 dark:text-green-400">
+                            <Check size={14} aria-hidden="true" />
+                        </span>
+                        <Text className="text-sm text-gray-700 dark:text-gray-200">{status}</Text>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+
+            {/* Delete confirmation modal */}
+            <AnimatePresence>
+                {pendingDelete && (
+                    <motion.div
+                        className="fixed inset-0 z-50 flex items-center justify-center p-4"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        transition={{ duration: 0.2 }}
+                    >
+                        {/* Backdrop — click outside to dismiss */}
+                        <div
+                            className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+                            onClick={() => setPendingDelete(null)}
+                            aria-hidden="true"
+                        />
+
+                        {/* Dialog */}
+                        <motion.div
+                            role="dialog"
+                            aria-modal="true"
+                            aria-labelledby="delete-modal-title"
+                            className="relative z-10 w-full max-w-md rounded-2xl border border-gray-200 bg-white p-6 shadow-xl dark:border-gray-800 dark:bg-gray-900"
+                            initial={{ opacity: 0, scale: 0.95, y: 12 }}
+                            animate={{ opacity: 1, scale: 1, y: 0 }}
+                            exit={{ opacity: 0, scale: 0.95, y: 12 }}
+                            transition={{ type: 'spring', stiffness: 320, damping: 26 }}
+                        >
+                            <div className="flex items-start gap-4">
+                                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-red-100 text-red-600 dark:bg-red-500/15 dark:text-red-400">
+                                    <AlertTriangle size={22} aria-hidden="true" />
+                                </div>
+                                <div className="flex-1">
+                                    <Heading as="h2" id="delete-modal-title" size="lg" weight="semibold">
+                                        Delete Workflow?
+                                    </Heading>
+                                    <Text className="mt-2 text-sm text-gray-500 dark:text-gray-400">
+                                        This action cannot be undone. Are you sure you want to delete this workflow?
+                                    </Text>
+                                </div>
+                            </div>
+
+                            <div className="mt-6 flex justify-end gap-3">
+                                <Button variant="outline" color="gray" onClick={() => setPendingDelete(null)}>
+                                    Cancel
+                                </Button>
+                                <Button variant="primary" color="red" onClick={confirmDelete}>
+                                    Delete
+                                </Button>
+                            </div>
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
         </>
     );
 } 

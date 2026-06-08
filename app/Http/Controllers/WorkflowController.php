@@ -19,6 +19,8 @@ class WorkflowController extends Controller
             'description' => 'nullable|string',
             'nodes'       => 'required|array',
             'edges'       => 'required|array',
+            'tags'        => 'nullable|array',
+            'tags.*'      => 'string',
         ]);
 
         $workflow = Workflow::create($validated);
@@ -38,6 +40,8 @@ class WorkflowController extends Controller
             'description' => 'nullable|string',
             'nodes'       => 'sometimes|array',
             'edges'       => 'sometimes|array',
+            'tags'        => 'nullable|array',
+            'tags.*'      => 'string',
         ]);
 
         $workflow->update($validated);

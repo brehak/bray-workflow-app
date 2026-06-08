@@ -1,8 +1,10 @@
 import { Head, Link } from '@inertiajs/react';
 import { FlowEditor } from '@particle-academy/fancy-flow';
 import { useFlowRunnerUx } from '@particle-academy/fancy-flow/ux';
-import { Button, Heading, Text, Toast, useToast } from '@particle-academy/react-fancy';
+import { Button, Heading, Pillbox, Text, Toast, useToast } from '@particle-academy/react-fancy';
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Workflow as WorkflowIcon, ArrowLeft } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import ThemeToggle from '../Components/ThemeToggle';
 import '../../css/flow-animations.css';
@@ -443,12 +445,47 @@ const withToasts = (registry, meta, fire, hooks = {}) => {
     return wrapped;
 };
 
+// Per-template accent theme. Full Tailwind class strings (not interpolated) so
+// the scanner picks them up. `button` is a react-fancy color name. Blank/new
+// workflows fall back to a neutral gray.
+const accentThemes = {
+    onboarding: {
+        label: 'Onboarding',
+        bar: 'bg-blue-500',
+        badge: 'bg-blue-100 text-blue-700 ring-blue-200 dark:bg-blue-500/15 dark:text-blue-300 dark:ring-blue-500/30',
+        button: 'blue',
+    },
+    order: {
+        label: 'Order',
+        bar: 'bg-green-500',
+        badge: 'bg-green-100 text-green-700 ring-green-200 dark:bg-green-500/15 dark:text-green-300 dark:ring-green-500/30',
+        button: 'green',
+    },
+    bugreport: {
+        label: 'Bug Report',
+        bar: 'bg-red-500',
+        badge: 'bg-red-100 text-red-700 ring-red-200 dark:bg-red-500/15 dark:text-red-300 dark:ring-red-500/30',
+        button: 'red',
+    },
+};
+
+const neutralAccent = {
+    label: 'New Workflow',
+    bar: 'bg-gray-300 dark:bg-gray-700',
+    badge: 'bg-gray-100 text-gray-600 ring-gray-200 dark:bg-gray-700/40 dark:text-gray-300 dark:ring-gray-600/40',
+    button: 'gray',
+};
+
+// Quick-pick tags surfaced next to the tags input.
+const SUGGESTED_TAGS = ['HR', 'Engineering', 'Finance', 'Operations', 'Design'];
+
 function WorkflowEditor() {
     const params = new URLSearchParams(window.location.search);
     const type = params.get('type');
     const savedId = params.get('id');
 
     const template = type && templates[type] ? templates[type] : null;
+    const accent = (type && accentThemes[type]) || neutralAccent;
 
     const { toast } = useToast();
 
@@ -517,8 +554,18 @@ function WorkflowEditor() {
     const [graph, setGraph] = useState(template ?? blankGraph);
     const [name, setName] = useState(template?.name ?? '');
     const [description, setDescription] = useState(template?.description ?? '');
+    const [tags, setTags] = useState(template?.tags ?? []);
     const [dbId, setDbId] = useState(null);
     const [status, setStatus] = useState(null);
+
+    // Add a tag if not already present (used by the quick-pick buttons).
+    const addTag = (tag) => setTags((prev) => (prev.includes(tag) ? prev : [...prev, tag]));
+
+    // FlowEditor is uncontrolled — it seeds its canvas from `initial` only at
+    // mount. Bumping this key remounts it so a wholesale graph replacement
+    // (load-from-db / import) actually shows on the canvas. We do NOT bump it on
+    // ordinary `onChange` edits, so editing keeps the editor's internal state.
+    const [editorKey, setEditorKey] = useState(0);
 
     useEffect(() => {
         if (savedId) {
@@ -528,11 +575,66 @@ function WorkflowEditor() {
                     setGraph({ nodes: data.nodes, edges: data.edges });
                     setName(data.name);
                     setDescription(data.description ?? '');
+                    setTags(data.tags ?? []);
                     setDbId(data.id);
                     setStatus('Loaded from database');
+                    setEditorKey((k) => k + 1);
                 });
         }
     }, []);
+
+    // Download the current workflow as a JSON file named after it.
+    const exportJson = () => {
+        const payload = { name, description, nodes: graph.nodes, edges: graph.edges, tags };
+        const slug =
+            (name.trim() || 'workflow')
+                .toLowerCase()
+                .replace(/[^a-z0-9]+/g, '-')
+                .replace(/^-+|-+$/g, '') || 'workflow';
+        const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${slug}.json`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+    };
+
+    // Open a file picker, parse the chosen JSON, and load it onto the canvas.
+    const importJson = () => {
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = 'application/json,.json';
+        input.onchange = async () => {
+            const file = input.files?.[0];
+            if (!file) return;
+            try {
+                const data = JSON.parse(await file.text());
+                if (!data || !Array.isArray(data.nodes) || !Array.isArray(data.edges)) {
+                    throw new Error('Missing nodes or edges');
+                }
+                setGraph({ nodes: data.nodes, edges: data.edges });
+                setName(data.name ?? '');
+                setDescription(data.description ?? '');
+                setTags(Array.isArray(data.tags) ? data.tags : []);
+                setEditorKey((k) => k + 1);
+                toast({
+                    title: 'Workflow imported',
+                    description: data.name ? `Loaded “${data.name}”` : 'Loaded from file',
+                    variant: 'success',
+                });
+            } catch {
+                toast({
+                    title: 'Import failed',
+                    description: 'That file isn’t a valid workflow JSON.',
+                    variant: 'error',
+                });
+            }
+        };
+        input.click();
+    };
 
     const saveWorkflow = async () => {
         if (!name.trim()) {
@@ -546,6 +648,7 @@ function WorkflowEditor() {
                 description,
                 nodes: graph.nodes,
                 edges: graph.edges,
+                tags,
             };
 
             const url = dbId ? `/workflows/${dbId}` : '/workflows';
@@ -573,8 +676,18 @@ function WorkflowEditor() {
             <Head title={name || 'New Workflow'} />
 
             <div className="flex min-h-screen flex-col bg-gray-50 dark:bg-gray-950">
+                {/* Accent banner showing which template is active */}
+                <div className={`h-1.5 w-full ${accent.bar}`} />
                 <header className="flex items-center justify-between gap-4 border-b border-gray-200 bg-white px-6 py-4 dark:border-gray-800 dark:bg-gray-900">
                     <div className="flex flex-col gap-1">
+                        <motion.span
+                            initial={{ opacity: 0, y: -4 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ duration: 0.4, ease: 'easeOut' }}
+                            className={`inline-flex w-fit items-center rounded-full px-2.5 py-0.5 text-xs font-medium ring-1 ring-inset ${accent.badge}`}
+                        >
+                            {accent.label}
+                        </motion.span>
                         <input
                             type="text"
                             value={name}
@@ -588,6 +701,29 @@ function WorkflowEditor() {
                             placeholder="Add a description..."
                             className="text-sm bg-transparent border-none outline-none text-gray-500 placeholder-gray-400"
                         />
+
+                        {/* Tags: type + Enter to add (removable via the pill X),
+                            with quick picks for common tags. */}
+                        <div className="mt-2 flex flex-wrap items-center gap-2">
+                            <Pillbox
+                                value={tags}
+                                onChange={setTags}
+                                placeholder="Add tags…"
+                                className="min-w-56 py-1 text-sm"
+                            />
+                            <div className="flex flex-wrap items-center gap-1.5">
+                                {SUGGESTED_TAGS.filter((t) => !tags.includes(t)).map((t) => (
+                                    <button
+                                        key={t}
+                                        type="button"
+                                        onClick={() => addTag(t)}
+                                        className="rounded-full border border-dashed border-gray-300 px-2.5 py-0.5 text-xs font-medium text-gray-500 transition-colors hover:border-gray-400 hover:bg-gray-100 dark:border-gray-700 dark:text-gray-400 dark:hover:bg-gray-800"
+                                    >
+                                        + {t}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
                     </div>
 
                     <div className="flex items-center gap-3">
@@ -595,9 +731,19 @@ function WorkflowEditor() {
                         {status && (
                             <Text className="text-sm text-gray-500">{status}</Text>
                         )}
-                        <Button onClick={saveWorkflow} variant="primary">
+                        <Button onClick={saveWorkflow} variant="primary" color={accent.button}>
                             Save Workflow
                         </Button>
+                        <motion.div whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.96 }} className="inline-flex">
+                            <Button onClick={exportJson} variant="outline">
+                                Export JSON
+                            </Button>
+                        </motion.div>
+                        <motion.div whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.96 }} className="inline-flex">
+                            <Button onClick={importJson} variant="outline">
+                                Import JSON
+                            </Button>
+                        </motion.div>
                         <Link href="/workflows-list">
                             <Button variant="outline">Saved Workflows</Button>
                         </Link>
@@ -608,8 +754,9 @@ function WorkflowEditor() {
                 </header>
 
                 <main className="flex-1 p-6">
-                    <div className={running ? 'flow-running' : undefined}>
+                    <div className={`relative ${running ? 'flow-running' : ''}`}>
                         <FlowEditor
+                            key={editorKey}
                             initial={graph}
                             executors={executors}
                             height={720}
@@ -619,6 +766,53 @@ function WorkflowEditor() {
                                 description,
                             }}
                         />
+
+                        {/* Friendly empty state — shown on a blank canvas, fades out
+                            once the first node is added. `pointer-events-none` keeps
+                            drag-and-drop onto the canvas fully working. */}
+                        <AnimatePresence>
+                            {!savedId && graph.nodes.length === 0 && (
+                                <motion.div
+                                    key="empty-state"
+                                    initial={{ opacity: 0 }}
+                                    animate={{ opacity: 1 }}
+                                    exit={{ opacity: 0 }}
+                                    transition={{ duration: 0.4, ease: 'easeOut' }}
+                                    className="pointer-events-none absolute inset-0 z-10 flex flex-col items-center justify-center text-center"
+                                >
+                                    <div className="relative flex flex-col items-center">
+                                        <WorkflowIcon
+                                            size={96}
+                                            strokeWidth={1.25}
+                                            className="text-gray-300 dark:text-gray-700"
+                                            aria-hidden="true"
+                                        />
+                                        <h2 className="mt-6 text-2xl font-semibold text-gray-700 dark:text-gray-200">
+                                            Start building your workflow
+                                        </h2>
+                                        <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
+                                            Drag a node from the left panel to get started
+                                        </p>
+
+                                        {/* Visual hint pointing toward the left node palette.
+                                            Anchored to the centered content (which sits over the
+                                            canvas) so it stays inside the workflow box. The outer
+                                            div owns positioning; the inner motion div owns the bob
+                                            so their transforms don't clash. */}
+                                        <div className="absolute right-full top-1/2 mr-8 -translate-y-1/2">
+                                            <motion.div
+                                                className="flex items-center gap-2 whitespace-nowrap text-gray-400 dark:text-gray-500"
+                                                animate={{ x: [0, -8, 0] }}
+                                                transition={{ duration: 1.4, repeat: Infinity, ease: 'easeInOut' }}
+                                            >
+                                                <ArrowLeft size={28} strokeWidth={2} aria-hidden="true" />
+                                                <span className="text-sm font-medium">Node palette</span>
+                                            </motion.div>
+                                        </div>
+                                    </div>
+                                </motion.div>
+                            )}
+                        </AnimatePresence>
                     </div>
                 </main>
             </div>
