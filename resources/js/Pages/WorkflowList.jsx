@@ -42,6 +42,69 @@ const templates = [
         accent: 'from-red-500 to-orange-400',
         glow: ['#ef4444', '#fb923c'], // red → orange
     },
+    {
+        id: 'jobapplication',
+        title: 'Job Application Pipeline',
+        description: 'Screen applicants, run phone and technical interviews, then route strong candidates to an offer.',
+        nodes: 8,
+        edges: 7,
+        accent: 'from-purple-500 to-fuchsia-500',
+        glow: ['#a855f7', '#d946ef'], // purple → fuchsia
+    },
+    {
+        id: 'contentpublishing',
+        title: 'Content Publishing',
+        description: 'Take a draft through editorial review and SEO checks, then schedule and publish it.',
+        nodes: 7,
+        edges: 6,
+        accent: 'from-teal-500 to-cyan-500',
+        glow: ['#14b8a6', '#06b6d4'], // teal → cyan
+    },
+    {
+        id: 'budgetapproval',
+        title: 'Budget Approval',
+        description: 'Validate a spend request, run department review, then route it to manager or executive approval.',
+        nodes: 8,
+        edges: 7,
+        accent: 'from-amber-500 to-yellow-400',
+        glow: ['#f59e0b', '#facc15'], // amber → yellow
+    },
+    {
+        id: 'ptorequest',
+        title: 'PTO Request',
+        description: 'Check team coverage, get manager approval, update the calendar, and notify the team.',
+        nodes: 8,
+        edges: 7,
+        accent: 'from-green-500 to-emerald-500',
+        glow: ['#22c55e', '#10b981'], // green → emerald
+    },
+    {
+        id: 'productrecall',
+        title: 'Product Recall',
+        description: 'Assess a product issue, notify regulators if needed, alert customers, and process returns.',
+        nodes: 8,
+        edges: 8,
+        accent: 'from-red-500 to-rose-500',
+        glow: ['#ef4444', '#f43f5e'], // red → rose
+    },
+    {
+        id: 'eventplanning',
+        title: 'Event Planning',
+        description: 'Book a venue, send invites, confirm arrangements once RSVPs clear, then run the day-of checklist and follow up.',
+        nodes: 9,
+        edges: 8,
+        accent: 'from-pink-500 to-rose-500',
+        glow: ['#ec4899', '#f43f5e'], // pink → rose
+    },
+    {
+        id: 'returnrefund',
+        title: 'Return & Refund',
+        description: 'Verify a purchase, inspect the return, then process or deny the refund and close the case.',
+        nodes: 8,
+        edges: 7,
+        accent: 'from-violet-500 to-purple-400',
+        glow: ['#8b5cf6', '#c084fc'], // violet → purple
+    },
 ];
 
 export default function WorkflowList({ workflows }) {

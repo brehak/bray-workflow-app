@@ -1,31 +1,10 @@
 import { Head, Link } from '@inertiajs/react';
-import { Button, Card, Heading, Text } from '@particle-academy/react-fancy';
+import { Button, Heading, Text } from '@particle-academy/react-fancy';
 import { motion } from 'framer-motion';
 import GradientDivider from '../Components/GradientDivider';
 import Logo from '../Components/Logo';
 import NavButton from '../Components/NavButton';
 import ThemeToggle from '../Components/ThemeToggle';
-
-const features = [
-    {
-        id: 'onboarding',
-        emoji: '🚀',
-        title: 'Employee Onboarding',
-        description: 'Provision accounts, set up tools, and assign training automatically the moment a new hire is submitted.',
-    },
-    {
-        id: 'order',
-        emoji: '📦',
-        title: 'Order Processing',
-        description: 'Take every order from payment through inventory, shipping, and delivery without lifting a finger.',
-    },
-    {
-        id: 'bugreport',
-        emoji: '🐛',
-        title: 'Bug Report',
-        description: 'Triage incoming bugs, route them to the right developer, and track each fix through to close.',
-    },
-];
 
 // Shared entrance animation — children fade and rise into place.
 const fadeUp = {
@@ -110,59 +89,6 @@ export default function Welcome() {
                         </motion.div>
                     </section>
                     </div>
-
-                    {/* Feature templates */}
-                    <section className="mx-auto w-full max-w-5xl px-6 pb-24 lg:pb-32">
-                        <motion.div
-                            className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3"
-                            initial="hidden"
-                            whileInView="visible"
-                            viewport={{ once: true, amount: 0.2 }}
-                            variants={stagger}
-                        >
-                            {features.map((feature) => (
-                                <motion.div
-                                    key={feature.id}
-                                    variants={fadeUp}
-                                    whileHover={{ y: -6 }}
-                                    transition={{ type: 'spring', stiffness: 300, damping: 22 }}
-                                    className="h-full"
-                                >
-                                    <Card
-                                        variant="elevated"
-                                        padding="lg"
-                                        className="flex h-full flex-col rounded-2xl transition-shadow duration-300 hover:shadow-xl hover:shadow-indigo-500/5 dark:hover:shadow-indigo-400/10"
-                                    >
-                                        {/* Emoji in a tinted, ringed tile so the card reads as a product icon. */}
-                                        <span
-                                            className="inline-flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-gray-100 to-gray-200 text-2xl shadow-inner ring-1 ring-black/5 dark:from-gray-800 dark:to-gray-900 dark:ring-white/10"
-                                            aria-hidden="true"
-                                        >
-                                            {feature.emoji}
-                                        </span>
-                                        <Heading
-                                            as="h3"
-                                            size="lg"
-                                            weight="bold"
-                                            className="mt-5 tracking-tight text-gray-900 dark:text-white"
-                                        >
-                                            {feature.title}
-                                        </Heading>
-                                        <Text className="mt-2 flex-1 text-sm leading-relaxed text-gray-500 dark:text-gray-400">
-                                            {feature.description}
-                                        </Text>
-                                        <div className="mt-6 border-t border-gray-100 pt-5 dark:border-gray-800">
-                                            <Link href={`/workflow?type=${feature.id}`}>
-                                                <Button variant="primary" className="rounded-full">
-                                                    Launch
-                                                </Button>
-                                            </Link>
-                                        </div>
-                                    </Card>
-                                </motion.div>
-                            ))}
-                        </motion.div>
-                    </section>
                 </main>
 
                 {/* Footer */}

@@ -13,6 +13,7 @@ import NavButton from '../Components/NavButton';
 import NodeConfigPanel from '../Components/NodeConfigPanel';
 import RunHistoryPanel from '../Components/RunHistoryPanel';
 import SaveStatusIndicator from '../Components/SaveStatusIndicator';
+import ShortcutsModal from '../Components/ShortcutsModal';
 import UnsavedChangesModal from '../Components/UnsavedChangesModal';
 import ThemeToggle from '../Components/ThemeToggle';
 import Tooltip from '../Components/Tooltip';
@@ -84,6 +85,168 @@ const templates = {
             { id: 'e5', source: 'hotfix', target: 'fix' },
             { id: 'e6', source: 'backlog', target: 'fix' },
             { id: 'e7', source: 'fix', target: 'close' },
+        ],
+    },
+    jobapplication: {
+        name: 'Job Application Pipeline',
+        description: 'Screens applicants, runs interviews, and routes strong candidates to an offer',
+        nodes: [
+            { id: 'trigger', type: 'trigger', position: { x: 0, y: 160 }, data: { kind: 'trigger', label: 'Application Received' } },
+            { id: 'screen-resume', type: 'action', position: { x: 260, y: 160 }, data: { kind: 'action', label: 'Screen Resume' } },
+            { id: 'phone-interview', type: 'action', position: { x: 520, y: 160 }, data: { kind: 'action', label: 'Phone Interview' } },
+            { id: 'tech-interview', type: 'action', position: { x: 780, y: 160 }, data: { kind: 'action', label: 'Technical Interview' } },
+            { id: 'candidate-check', type: 'decision', position: { x: 1040, y: 160 }, data: { kind: 'decision', label: 'Strong Candidate?' } },
+            { id: 'send-offer', type: 'action', position: { x: 1300, y: 60 }, data: { kind: 'action', label: 'Send Offer' } },
+            { id: 'send-rejection', type: 'output', position: { x: 1300, y: 260 }, data: { kind: 'output', label: 'Send Rejection' } },
+            { id: 'onboarding-started', type: 'output', position: { x: 1560, y: 60 }, data: { kind: 'output', label: 'Onboarding Started' } },
+        ],
+        edges: [
+            { id: 'e1', source: 'trigger', target: 'screen-resume' },
+            { id: 'e2', source: 'screen-resume', target: 'phone-interview' },
+            { id: 'e3', source: 'phone-interview', target: 'tech-interview' },
+            { id: 'e4', source: 'tech-interview', target: 'candidate-check' },
+            { id: 'e5', source: 'candidate-check', sourceHandle: 'true', target: 'send-offer' },
+            { id: 'e6', source: 'candidate-check', sourceHandle: 'false', target: 'send-rejection' },
+            { id: 'e7', source: 'send-offer', target: 'onboarding-started' },
+        ],
+    },
+    contentpublishing: {
+        name: 'Content Publishing',
+        description: 'Takes a draft through editorial review and SEO checks, then schedules and publishes it',
+        nodes: [
+            { id: 'trigger', type: 'trigger', position: { x: 0, y: 160 }, data: { kind: 'trigger', label: 'Draft Created' } },
+            { id: 'editorial-review', type: 'action', position: { x: 260, y: 160 }, data: { kind: 'action', label: 'Editorial Review' } },
+            { id: 'seo-check', type: 'action', position: { x: 520, y: 160 }, data: { kind: 'action', label: 'SEO Check' } },
+            { id: 'approval-check', type: 'decision', position: { x: 780, y: 160 }, data: { kind: 'decision', label: 'Approved?' } },
+            { id: 'schedule-post', type: 'action', position: { x: 1040, y: 60 }, data: { kind: 'action', label: 'Schedule Post' } },
+            { id: 'request-changes', type: 'output', position: { x: 1040, y: 260 }, data: { kind: 'output', label: 'Request Changes' } },
+            { id: 'published', type: 'output', position: { x: 1300, y: 60 }, data: { kind: 'output', label: 'Published' } },
+        ],
+        edges: [
+            { id: 'e1', source: 'trigger', target: 'editorial-review' },
+            { id: 'e2', source: 'editorial-review', target: 'seo-check' },
+            { id: 'e3', source: 'seo-check', target: 'approval-check' },
+            { id: 'e4', source: 'approval-check', sourceHandle: 'true', target: 'schedule-post' },
+            { id: 'e5', source: 'approval-check', sourceHandle: 'false', target: 'request-changes' },
+            { id: 'e6', source: 'schedule-post', target: 'published' },
+        ],
+    },
+    budgetapproval: {
+        name: 'Budget Approval',
+        description: 'Validates a spend request, runs department review, then routes it to manager or executive approval',
+        nodes: [
+            { id: 'trigger', type: 'trigger', position: { x: 0, y: 160 }, data: { kind: 'trigger', label: 'Request Submitted' } },
+            { id: 'validate-budget', type: 'action', position: { x: 260, y: 160 }, data: { kind: 'action', label: 'Validate Budget' } },
+            { id: 'department-review', type: 'action', position: { x: 520, y: 160 }, data: { kind: 'action', label: 'Department Review' } },
+            { id: 'amount-check', type: 'decision', position: { x: 780, y: 160 }, data: { kind: 'decision', label: 'Over $10k?' } },
+            { id: 'executive-approval', type: 'action', position: { x: 1040, y: 60 }, data: { kind: 'action', label: 'Executive Approval' } },
+            { id: 'manager-approval', type: 'action', position: { x: 1040, y: 260 }, data: { kind: 'action', label: 'Manager Approval' } },
+            { id: 'approved', type: 'output', position: { x: 1300, y: 60 }, data: { kind: 'output', label: 'Approved' } },
+            { id: 'denied', type: 'output', position: { x: 1300, y: 260 }, data: { kind: 'output', label: 'Denied' } },
+        ],
+        edges: [
+            { id: 'e1', source: 'trigger', target: 'validate-budget' },
+            { id: 'e2', source: 'validate-budget', target: 'department-review' },
+            { id: 'e3', source: 'department-review', target: 'amount-check' },
+            { id: 'e4', source: 'amount-check', sourceHandle: 'true', target: 'executive-approval' },
+            { id: 'e5', source: 'amount-check', sourceHandle: 'false', target: 'manager-approval' },
+            { id: 'e6', source: 'executive-approval', target: 'approved' },
+            { id: 'e7', source: 'manager-approval', target: 'denied' },
+        ],
+    },
+    ptorequest: {
+        name: 'PTO Request',
+        description: 'Checks team coverage, gets manager approval, updates the calendar, and notifies the team',
+        nodes: [
+            { id: 'trigger', type: 'trigger', position: { x: 0, y: 160 }, data: { kind: 'trigger', label: 'Submit Request' } },
+            { id: 'check-coverage', type: 'action', position: { x: 260, y: 160 }, data: { kind: 'action', label: 'Check Coverage' } },
+            { id: 'manager-review', type: 'action', position: { x: 520, y: 160 }, data: { kind: 'action', label: 'Manager Review' } },
+            { id: 'approval-check', type: 'decision', position: { x: 780, y: 160 }, data: { kind: 'decision', label: 'Approved?' } },
+            { id: 'update-calendar', type: 'action', position: { x: 1040, y: 60 }, data: { kind: 'action', label: 'Update Calendar' } },
+            { id: 'deny-request', type: 'output', position: { x: 1040, y: 260 }, data: { kind: 'output', label: 'Deny Request' } },
+            { id: 'notify-team', type: 'action', position: { x: 1300, y: 60 }, data: { kind: 'action', label: 'Notify Team' } },
+            { id: 'confirmed', type: 'output', position: { x: 1560, y: 60 }, data: { kind: 'output', label: 'Confirmed' } },
+        ],
+        edges: [
+            { id: 'e1', source: 'trigger', target: 'check-coverage' },
+            { id: 'e2', source: 'check-coverage', target: 'manager-review' },
+            { id: 'e3', source: 'manager-review', target: 'approval-check' },
+            { id: 'e4', source: 'approval-check', sourceHandle: 'true', target: 'update-calendar' },
+            { id: 'e5', source: 'approval-check', sourceHandle: 'false', target: 'deny-request' },
+            { id: 'e6', source: 'update-calendar', target: 'notify-team' },
+            { id: 'e7', source: 'notify-team', target: 'confirmed' },
+        ],
+    },
+    productrecall: {
+        name: 'Product Recall',
+        description: 'Assesses a product issue, notifies regulators if needed, alerts customers, and processes returns',
+        nodes: [
+            { id: 'trigger', type: 'trigger', position: { x: 0, y: 160 }, data: { kind: 'trigger', label: 'Issue Detected' } },
+            { id: 'assess-scope', type: 'action', position: { x: 260, y: 160 }, data: { kind: 'action', label: 'Assess Scope' } },
+            { id: 'safety-check', type: 'decision', position: { x: 520, y: 160 }, data: { kind: 'decision', label: 'Safety Risk?' } },
+            { id: 'notify-regulators', type: 'action', position: { x: 780, y: 60 }, data: { kind: 'action', label: 'Notify Regulators' } },
+            { id: 'monitor-situation', type: 'action', position: { x: 780, y: 260 }, data: { kind: 'action', label: 'Monitor Situation' } },
+            { id: 'customer-alert', type: 'action', position: { x: 1040, y: 160 }, data: { kind: 'action', label: 'Customer Alert' } },
+            { id: 'return-process', type: 'action', position: { x: 1300, y: 160 }, data: { kind: 'action', label: 'Return Process' } },
+            { id: 'resolved', type: 'output', position: { x: 1560, y: 160 }, data: { kind: 'output', label: 'Resolved' } },
+        ],
+        edges: [
+            { id: 'e1', source: 'trigger', target: 'assess-scope' },
+            { id: 'e2', source: 'assess-scope', target: 'safety-check' },
+            { id: 'e3', source: 'safety-check', sourceHandle: 'true', target: 'notify-regulators' },
+            { id: 'e4', source: 'safety-check', sourceHandle: 'false', target: 'monitor-situation' },
+            { id: 'e5', source: 'notify-regulators', target: 'customer-alert' },
+            { id: 'e6', source: 'monitor-situation', target: 'customer-alert' },
+            { id: 'e7', source: 'customer-alert', target: 'return-process' },
+            { id: 'e8', source: 'return-process', target: 'resolved' },
+        ],
+    },
+    eventplanning: {
+        name: 'Event Planning',
+        description: 'Books a venue, sends invites, confirms arrangements once RSVPs clear, then runs the day-of checklist and follows up',
+        nodes: [
+            { id: 'trigger', type: 'trigger', position: { x: 0, y: 160 }, data: { kind: 'trigger', label: 'Event Created' } },
+            { id: 'book-venue', type: 'action', position: { x: 260, y: 160 }, data: { kind: 'action', label: 'Book Venue' } },
+            { id: 'send-invites', type: 'action', position: { x: 520, y: 160 }, data: { kind: 'action', label: 'Send Invites' } },
+            { id: 'rsvp-check', type: 'decision', position: { x: 780, y: 160 }, data: { kind: 'decision', label: 'Enough RSVPs?' } },
+            { id: 'confirm-arrangements', type: 'action', position: { x: 1040, y: 60 }, data: { kind: 'action', label: 'Confirm Arrangements' } },
+            { id: 'cancel-event', type: 'output', position: { x: 1040, y: 260 }, data: { kind: 'output', label: 'Cancel Event' } },
+            { id: 'day-of-checklist', type: 'action', position: { x: 1300, y: 60 }, data: { kind: 'action', label: 'Day Of Checklist' } },
+            { id: 'follow-up', type: 'action', position: { x: 1560, y: 60 }, data: { kind: 'action', label: 'Follow Up' } },
+            { id: 'event-complete', type: 'output', position: { x: 1820, y: 60 }, data: { kind: 'output', label: 'Event Complete' } },
+        ],
+        edges: [
+            { id: 'e1', source: 'trigger', target: 'book-venue' },
+            { id: 'e2', source: 'book-venue', target: 'send-invites' },
+            { id: 'e3', source: 'send-invites', target: 'rsvp-check' },
+            { id: 'e4', source: 'rsvp-check', sourceHandle: 'true', target: 'confirm-arrangements' },
+            { id: 'e5', source: 'rsvp-check', sourceHandle: 'false', target: 'cancel-event' },
+            { id: 'e6', source: 'confirm-arrangements', target: 'day-of-checklist' },
+            { id: 'e7', source: 'day-of-checklist', target: 'follow-up' },
+            { id: 'e8', source: 'follow-up', target: 'event-complete' },
+        ],
+    },
+    returnrefund: {
+        name: 'Return & Refund',
+        description: 'Verifies a purchase, inspects the return, then processes or denies the refund and closes the case',
+        nodes: [
+            { id: 'trigger', type: 'trigger', position: { x: 0, y: 160 }, data: { kind: 'trigger', label: 'Request Received' } },
+            { id: 'verify-purchase', type: 'action', position: { x: 260, y: 160 }, data: { kind: 'action', label: 'Verify Purchase' } },
+            { id: 'inspect-return', type: 'action', position: { x: 520, y: 160 }, data: { kind: 'action', label: 'Inspect Return' } },
+            { id: 'approval-check', type: 'decision', position: { x: 780, y: 160 }, data: { kind: 'decision', label: 'Approve?' } },
+            { id: 'process-refund', type: 'action', position: { x: 1040, y: 60 }, data: { kind: 'action', label: 'Process Refund' } },
+            { id: 'deny-refund', type: 'output', position: { x: 1040, y: 260 }, data: { kind: 'output', label: 'Deny Refund' } },
+            { id: 'notify-customer', type: 'action', position: { x: 1300, y: 60 }, data: { kind: 'action', label: 'Notify Customer' } },
+            { id: 'case-closed', type: 'output', position: { x: 1560, y: 60 }, data: { kind: 'output', label: 'Case Closed' } },
+        ],
+        edges: [
+            { id: 'e1', source: 'trigger', target: 'verify-purchase' },
+            { id: 'e2', source: 'verify-purchase', target: 'inspect-return' },
+            { id: 'e3', source: 'inspect-return', target: 'approval-check' },
+            { id: 'e4', source: 'approval-check', sourceHandle: 'true', target: 'process-refund' },
+            { id: 'e5', source: 'approval-check', sourceHandle: 'false', target: 'deny-refund' },
+            { id: 'e6', source: 'process-refund', target: 'notify-customer' },
+            { id: 'e7', source: 'notify-customer', target: 'case-closed' },
         ],
     },
 };
@@ -418,12 +581,660 @@ const bugReportExecutors = {
     },
 };
 
+// ── Job Application Pipeline ──────────────────────────────────────────────
+const jobApplicationExecutors = {
+    trigger: async ({ node, emit }) => {
+        const candidate = {
+            name: 'Maya Chen',
+            email: 'maya.chen@gmail.com',
+            role: 'Senior Backend Engineer',
+            source: 'LinkedIn',
+            appliedAt: '2026-06-09',
+        };
+        say(emit, node, 'info', `Application received: ${candidate.name} — ${candidate.role} (via ${candidate.source})`);
+        return { candidate };
+    },
+    'screen-resume': async ({ node, inputs, emit }) => {
+        await wait(600);
+        const { candidate } = inputs.in;
+        const screening = {
+            score: 88,
+            yearsExperience: 7,
+            skills: ['Go', 'PostgreSQL', 'Kubernetes', 'gRPC'],
+            passed: true,
+        };
+        say(
+            emit,
+            node,
+            'info',
+            `Resume screened for ${candidate.name} — ${screening.score}/100, ${screening.yearsExperience} yrs, skills: ${screening.skills.join(', ')}`,
+        );
+        return { ...inputs.in, screening };
+    },
+    'phone-interview': async ({ node, inputs, emit }) => {
+        await wait(650);
+        const phoneInterview = {
+            interviewer: 'Priya N. (Recruiter)',
+            score: 8.5,
+            recommendation: 'advance',
+            notes: 'Clear communicator, strong systems-design fundamentals.',
+        };
+        say(
+            emit,
+            node,
+            'info',
+            `Phone interview with ${phoneInterview.interviewer} — ${phoneInterview.score}/10, recommendation: ${phoneInterview.recommendation}`,
+        );
+        return { ...inputs.in, phoneInterview };
+    },
+    'tech-interview': async ({ node, inputs, emit }) => {
+        await wait(700);
+        const techInterview = {
+            panel: ['Lead Engineer', 'Staff Engineer'],
+            score: 9.0,
+            problem: 'Design a distributed rate limiter',
+            result: 'strong hire',
+        };
+        say(
+            emit,
+            node,
+            'info',
+            `Technical interview (${techInterview.panel.join(' + ')}) — "${techInterview.problem}": ${techInterview.score}/10 (${techInterview.result})`,
+        );
+        return { ...inputs.in, techInterview };
+    },
+    'candidate-check': ({ node, inputs, emit }) => {
+        const { phoneInterview, techInterview } = inputs.in;
+        const isStrong = techInterview.score >= 8 && phoneInterview.score >= 7;
+        say(
+            emit,
+            node,
+            isStrong ? 'info' : 'warn',
+            isStrong
+                ? `Strong candidate — advancing to an offer (tech ${techInterview.score}/10, phone ${phoneInterview.score}/10)`
+                : `Below the bar — sending a polite rejection`,
+        );
+        return { branch: isStrong ? 'true' : 'false', value: inputs.in };
+    },
+    'send-offer': async ({ node, inputs, emit }) => {
+        await wait(600);
+        const { candidate } = inputs.in;
+        const offer = {
+            title: candidate.role,
+            baseSalary: 185000,
+            equity: '0.05%',
+            startDate: '2026-07-07',
+            expiresOn: '2026-06-23',
+        };
+        say(
+            emit,
+            node,
+            'info',
+            `Offer sent to ${candidate.name} — ${offer.title}, $${offer.baseSalary.toLocaleString()} base, ${offer.equity} equity (expires ${offer.expiresOn})`,
+        );
+        return { ...inputs.in, offer };
+    },
+    'send-rejection': ({ node, inputs, emit }) => {
+        const { candidate } = inputs.in;
+        say(emit, node, 'info', `✗ Rejection sent to ${candidate.name} — thanked for their time, encouraged to reapply`);
+        return { status: 'rejected', candidateName: candidate.name };
+    },
+    'onboarding-started': ({ node, inputs, emit }) => {
+        const { candidate, offer } = inputs.in;
+        say(emit, node, 'info', `✅ ${candidate.name} accepted — onboarding kicked off, start date ${offer.startDate}`);
+        return { status: 'complete', summary: { candidate: candidate.name, title: offer.title, startDate: offer.startDate } };
+    },
+};
+
+// ── Content Publishing ────────────────────────────────────────────────────
+const contentPublishingExecutors = {
+    trigger: async ({ node, emit }) => {
+        const draft = {
+            title: '10 Patterns for Scaling PostgreSQL',
+            author: 'Sam Rivera',
+            wordCount: 1840,
+            category: 'Engineering',
+            createdAt: '2026-06-09',
+        };
+        say(emit, node, 'info', `Draft created: "${draft.title}" by ${draft.author} — ${draft.wordCount} words (${draft.category})`);
+        return { draft };
+    },
+    'editorial-review': async ({ node, inputs, emit }) => {
+        await wait(650);
+        const { draft } = inputs.in;
+        const review = {
+            editor: 'Dana K.',
+            grammarIssues: 3,
+            readabilityScore: 72,
+            suggestions: ['Tighten the intro', 'Add a summary box'],
+            verdict: 'minor edits',
+        };
+        say(
+            emit,
+            node,
+            'info',
+            `Editorial review by ${review.editor} — ${review.grammarIssues} grammar issues, readability ${review.readabilityScore}/100 (${review.verdict})`,
+        );
+        return { ...inputs.in, review };
+    },
+    'seo-check': async ({ node, inputs, emit }) => {
+        await wait(600);
+        const seo = {
+            score: 91,
+            focusKeyword: 'postgres scaling',
+            metaLength: 156,
+            readingTime: '7 min',
+            passed: true,
+        };
+        say(
+            emit,
+            node,
+            'info',
+            `SEO check — ${seo.score}/100, focus keyword "${seo.focusKeyword}", meta ${seo.metaLength} chars, ${seo.readingTime} read`,
+        );
+        return { ...inputs.in, seo };
+    },
+    'approval-check': ({ node, inputs, emit }) => {
+        const { review, seo } = inputs.in;
+        const isApproved = seo.score >= 80 && review.grammarIssues <= 5;
+        say(
+            emit,
+            node,
+            isApproved ? 'info' : 'warn',
+            isApproved
+                ? `Approved — SEO ${seo.score}/100 and editorial clean, scheduling the post`
+                : `Not ready — sending back to the author for changes`,
+        );
+        return { branch: isApproved ? 'true' : 'false', value: inputs.in };
+    },
+    'schedule-post': async ({ node, inputs, emit }) => {
+        await wait(550);
+        const schedule = {
+            publishDate: '2026-06-12 09:00',
+            channels: ['Blog', 'Newsletter', 'LinkedIn'],
+            slug: 'scaling-postgres-patterns',
+        };
+        say(
+            emit,
+            node,
+            'info',
+            `Post scheduled for ${schedule.publishDate} → ${schedule.channels.join(', ')} (/${schedule.slug})`,
+        );
+        return { ...inputs.in, schedule };
+    },
+    'request-changes': ({ node, inputs, emit }) => {
+        const { draft, review } = inputs.in;
+        say(emit, node, 'info', `✗ Changes requested on "${draft.title}" — ${review.suggestions.join('; ')}`);
+        return { status: 'changes-requested', title: draft.title };
+    },
+    published: ({ node, inputs, emit }) => {
+        const { draft, schedule } = inputs.in;
+        say(emit, node, 'info', `✅ "${draft.title}" published to ${schedule.channels.join(', ')} — live at ${schedule.publishDate}`);
+        return { status: 'complete', summary: { title: draft.title, publishDate: schedule.publishDate, channels: schedule.channels } };
+    },
+};
+
+// ── Budget Approval ───────────────────────────────────────────────────────
+const budgetApprovalExecutors = {
+    trigger: async ({ node, emit }) => {
+        const request = {
+            id: rid('REQ-', 5),
+            requester: 'Jordan Blake',
+            department: 'Marketing',
+            amount: 24500,
+            purpose: 'Q3 paid media campaign',
+            submittedAt: '2026-06-09',
+        };
+        say(
+            emit,
+            node,
+            'info',
+            `Budget request ${request.id} submitted by ${request.requester} (${request.department}) — $${request.amount.toLocaleString()} for ${request.purpose}`,
+        );
+        return { request };
+    },
+    'validate-budget': async ({ node, inputs, emit }) => {
+        await wait(550);
+        const validation = { withinPolicy: true, glCode: 'GL-6200', fiscalYear: 'FY26', remainingBudget: 180000 };
+        say(
+            emit,
+            node,
+            'info',
+            `Budget validated — within policy, GL ${validation.glCode}, $${validation.remainingBudget.toLocaleString()} remaining in ${validation.fiscalYear}`,
+        );
+        return { ...inputs.in, validation };
+    },
+    'department-review': async ({ node, inputs, emit }) => {
+        await wait(650);
+        const deptReview = {
+            reviewer: 'Casey Morgan (Dept Head)',
+            priority: 'high',
+            recommendation: 'approve',
+            notes: 'Aligned with Q3 growth goals.',
+        };
+        say(
+            emit,
+            node,
+            'info',
+            `Department review by ${deptReview.reviewer} — ${deptReview.recommendation} (${deptReview.priority} priority)`,
+        );
+        return { ...inputs.in, deptReview };
+    },
+    'amount-check': ({ node, inputs, emit }) => {
+        const { request } = inputs.in;
+        const overThreshold = request.amount > 10000;
+        say(
+            emit,
+            node,
+            overThreshold ? 'warn' : 'info',
+            overThreshold
+                ? `Amount $${request.amount.toLocaleString()} exceeds $10k — routing to executive approval`
+                : `Amount $${request.amount.toLocaleString()} is under $10k — manager approval is sufficient`,
+        );
+        return { branch: overThreshold ? 'true' : 'false', value: inputs.in };
+    },
+    'executive-approval': async ({ node, inputs, emit }) => {
+        await wait(700);
+        const approval = {
+            approver: 'Morgan Lee (CFO)',
+            level: 'executive',
+            decision: 'approved',
+            conditions: 'Reassess spend at 60% utilization',
+            approvedAt: '2026-06-10',
+        };
+        say(emit, node, 'info', `Executive sign-off by ${approval.approver} — approved with condition: ${approval.conditions}`);
+        return { ...inputs.in, approval };
+    },
+    'manager-approval': async ({ node, inputs, emit }) => {
+        await wait(600);
+        const approval = {
+            approver: 'Riley Adams (Manager)',
+            level: 'manager',
+            decision: 'denied',
+            reason: 'Exceeds the remaining team budget this quarter',
+        };
+        say(emit, node, 'info', `Manager review by ${approval.approver} — denied: ${approval.reason}`);
+        return { ...inputs.in, approval };
+    },
+    approved: ({ node, inputs, emit }) => {
+        const { request, approval } = inputs.in;
+        say(emit, node, 'info', `✅ Budget request ${request.id} approved — $${request.amount.toLocaleString()} signed off by ${approval.approver}`);
+        return { status: 'approved', summary: { id: request.id, amount: request.amount, approver: approval.approver } };
+    },
+    denied: ({ node, inputs, emit }) => {
+        const { request, approval } = inputs.in;
+        say(emit, node, 'info', `✗ Budget request ${request.id} denied — ${approval.reason ?? 'did not meet approval criteria'}`);
+        return { status: 'denied', summary: { id: request.id, amount: request.amount, reason: approval.reason ?? 'criteria not met' } };
+    },
+};
+
+// ── PTO Request ───────────────────────────────────────────────────────────
+const ptoRequestExecutors = {
+    trigger: async ({ node, emit }) => {
+        const ptoRequest = {
+            id: rid('PTO-', 5),
+            employee: 'Alex Rivera',
+            type: 'Vacation',
+            startDate: '2026-07-20',
+            endDate: '2026-07-24',
+            days: 5,
+            submittedAt: '2026-06-09',
+        };
+        say(
+            emit,
+            node,
+            'info',
+            `PTO request ${ptoRequest.id} submitted by ${ptoRequest.employee} — ${ptoRequest.days} days ${ptoRequest.type.toLowerCase()} (${ptoRequest.startDate} → ${ptoRequest.endDate})`,
+        );
+        return { ptoRequest };
+    },
+    'check-coverage': async ({ node, inputs, emit }) => {
+        await wait(600);
+        const coverage = { teamSize: 6, outDuringPeriod: 1, backupAssigned: 'Sam Patel', status: 'covered' };
+        say(
+            emit,
+            node,
+            'info',
+            `Coverage checked — ${coverage.outDuringPeriod}/${coverage.teamSize} out during the window, backup ${coverage.backupAssigned} (${coverage.status})`,
+        );
+        return { ...inputs.in, coverage };
+    },
+    'manager-review': async ({ node, inputs, emit }) => {
+        await wait(650);
+        const review = { manager: 'Dana Brooks', decision: 'approve', remainingBalance: 12, notes: 'Coverage looks good — enjoy!' };
+        say(
+            emit,
+            node,
+            'info',
+            `Manager review by ${review.manager} — ${review.decision}, ${review.remainingBalance} days remaining after this`,
+        );
+        return { ...inputs.in, review };
+    },
+    'approval-check': ({ node, inputs, emit }) => {
+        const { coverage, review } = inputs.in;
+        const isApproved = coverage.status === 'covered' && review.decision === 'approve';
+        say(
+            emit,
+            node,
+            isApproved ? 'info' : 'warn',
+            isApproved
+                ? `Approved — coverage is in place and the manager signed off`
+                : `Denied — coverage gap or manager declined the request`,
+        );
+        return { branch: isApproved ? 'true' : 'false', value: inputs.in };
+    },
+    'update-calendar': async ({ node, inputs, emit }) => {
+        await wait(550);
+        const calendar = {
+            system: 'Google Calendar',
+            eventId: rid('EVT-', 6),
+            status: 'out-of-office',
+            syncedTo: ['Team Calendar', 'HRIS'],
+        };
+        say(
+            emit,
+            node,
+            'info',
+            `Calendar updated in ${calendar.system} — OOO event ${calendar.eventId}, synced to ${calendar.syncedTo.join(', ')}`,
+        );
+        return { ...inputs.in, calendar };
+    },
+    'deny-request': ({ node, inputs, emit }) => {
+        const { ptoRequest } = inputs.in;
+        say(emit, node, 'info', `✗ PTO request ${ptoRequest.id} denied — ${ptoRequest.employee} notified`);
+        return { status: 'denied', summary: { id: ptoRequest.id, employee: ptoRequest.employee } };
+    },
+    'notify-team': async ({ node, inputs, emit }) => {
+        await wait(500);
+        const { ptoRequest, coverage } = inputs.in;
+        const notification = { channel: '#team-eng', recipients: coverage.teamSize, backup: coverage.backupAssigned };
+        say(
+            emit,
+            node,
+            'info',
+            `Team notified in ${notification.channel} — ${ptoRequest.employee} out ${ptoRequest.startDate} → ${ptoRequest.endDate}, backup ${notification.backup}`,
+        );
+        return { ...inputs.in, notification };
+    },
+    confirmed: ({ node, inputs, emit }) => {
+        const { ptoRequest, calendar } = inputs.in;
+        say(emit, node, 'info', `✅ PTO confirmed for ${ptoRequest.employee} — ${ptoRequest.days} days off, calendar event ${calendar.eventId}`);
+        return { status: 'confirmed', summary: { id: ptoRequest.id, employee: ptoRequest.employee, days: ptoRequest.days } };
+    },
+};
+
+// ── Product Recall ────────────────────────────────────────────────────────
+const productRecallExecutors = {
+    trigger: async ({ node, emit }) => {
+        const incident = {
+            id: rid('REC-', 5),
+            product: 'AeroHeat Travel Kettle',
+            batch: 'BATCH-2026-0417',
+            affectedUnits: 12400,
+            issue: 'Overheating risk in the heating element',
+            detectedAt: '2026-06-09',
+        };
+        say(
+            emit,
+            node,
+            'warn',
+            `Issue detected ${incident.id}: "${incident.issue}" in ${incident.product} (${incident.batch}) — ${incident.affectedUnits.toLocaleString()} units`,
+        );
+        return { incident };
+    },
+    'assess-scope': async ({ node, inputs, emit }) => {
+        await wait(650);
+        const { incident } = inputs.in;
+        const scope = { regions: ['US', 'EU', 'CA'], severity: 'high', affectedUnits: incident.affectedUnits, riskLevel: 8.2 };
+        say(
+            emit,
+            node,
+            'info',
+            `Scope assessed — ${scope.severity} severity, risk ${scope.riskLevel}/10 across ${scope.regions.join(', ')} (${scope.affectedUnits.toLocaleString()} units)`,
+        );
+        return { ...inputs.in, scope };
+    },
+    'safety-check': ({ node, inputs, emit }) => {
+        const { scope } = inputs.in;
+        const isSafetyRisk = scope.riskLevel >= 7 || scope.severity === 'high';
+        say(
+            emit,
+            node,
+            isSafetyRisk ? 'warn' : 'info',
+            isSafetyRisk
+                ? `Safety risk confirmed (risk ${scope.riskLevel}/10) — notifying regulators`
+                : `No critical safety risk — monitoring the situation`,
+        );
+        return { branch: isSafetyRisk ? 'true' : 'false', value: inputs.in };
+    },
+    'notify-regulators': async ({ node, inputs, emit }) => {
+        await wait(600);
+        const regulatory = { agency: 'CPSC', contact: 'recalls@cpsc.gov', caseNumber: rid('CPSC-', 6), filedAt: '2026-06-10' };
+        say(emit, node, 'info', `Regulators notified — ${regulatory.agency} case ${regulatory.caseNumber} filed (${regulatory.contact})`);
+        return { ...inputs.in, regulatory };
+    },
+    'monitor-situation': async ({ node, inputs, emit }) => {
+        await wait(550);
+        const monitoring = { cadence: 'daily', owner: 'Quality Team', threshold: '0.5% incident rate' };
+        say(emit, node, 'info', `Monitoring situation — ${monitoring.cadence} review by ${monitoring.owner}, escalate above ${monitoring.threshold}`);
+        return { ...inputs.in, monitoring };
+    },
+    'customer-alert': async ({ node, inputs, emit }) => {
+        await wait(600);
+        const { incident } = inputs.in;
+        const alert = {
+            channels: ['Email', 'SMS', 'Press Release'],
+            reach: incident.affectedUnits,
+            advisory: 'Stop use and request a refund or replacement',
+        };
+        say(
+            emit,
+            node,
+            'warn',
+            `Customers alerted via ${alert.channels.join(', ')} — ${alert.reach.toLocaleString()} owners reached: "${alert.advisory}"`,
+        );
+        return { ...inputs.in, alert };
+    },
+    'return-process': async ({ node, inputs, emit }) => {
+        await wait(650);
+        const { incident } = inputs.in;
+        const unitsReturned = Math.round(incident.affectedUnits * 0.62);
+        const returns = { method: 'Prepaid shipping label', returnRate: 0.62, unitsReturned, refundIssued: true };
+        say(
+            emit,
+            node,
+            'info',
+            `Returns processed — ${(returns.returnRate * 100).toFixed(0)}% return rate, ${returns.unitsReturned.toLocaleString()} units back, refunds issued`,
+        );
+        return { ...inputs.in, returns };
+    },
+    resolved: ({ node, inputs, emit }) => {
+        const { incident, returns } = inputs.in;
+        say(emit, node, 'info', `✅ Recall ${incident.id} resolved — ${returns.unitsReturned.toLocaleString()} units returned, case closed`);
+        return { status: 'resolved', summary: { id: incident.id, product: incident.product, unitsReturned: returns.unitsReturned } };
+    },
+};
+
+// ── Event Planning ────────────────────────────────────────────────────────
+const eventPlanningExecutors = {
+    trigger: async ({ node, emit }) => {
+        const event = {
+            id: rid('EVT-', 5),
+            name: 'Annual Customer Summit',
+            type: 'Conference',
+            date: '2026-09-18',
+            expectedAttendees: 250,
+            organizer: 'Taylor Quinn',
+        };
+        say(
+            emit,
+            node,
+            'info',
+            `Event created ${event.id}: "${event.name}" (${event.type}) on ${event.date} — ${event.expectedAttendees} expected`,
+        );
+        return { event };
+    },
+    'book-venue': async ({ node, inputs, emit }) => {
+        await wait(650);
+        const venue = { name: 'Riverside Conference Center', capacity: 300, cost: 18500, bookingRef: rid('BK-', 6) };
+        say(
+            emit,
+            node,
+            'info',
+            `Venue booked — ${venue.name} (capacity ${venue.capacity}), $${venue.cost.toLocaleString()}, ref ${venue.bookingRef}`,
+        );
+        return { ...inputs.in, venue };
+    },
+    'send-invites': async ({ node, inputs, emit }) => {
+        await wait(600);
+        const invites = { sent: 400, channels: ['Email', 'Calendar'], rsvpDeadline: '2026-08-20' };
+        say(emit, node, 'info', `Invites sent — ${invites.sent} via ${invites.channels.join(', ')}, RSVP by ${invites.rsvpDeadline}`);
+        return { ...inputs.in, invites };
+    },
+    'rsvp-check': ({ node, inputs, emit }) => {
+        const { invites } = inputs.in;
+        const count = 268;
+        const rate = count / invites.sent;
+        const enough = count >= 150;
+        say(
+            emit,
+            node,
+            enough ? 'info' : 'warn',
+            enough
+                ? `${count} RSVPs (${(rate * 100).toFixed(0)}%) — enough to proceed`
+                : `Only ${count} RSVPs (${(rate * 100).toFixed(0)}%) — below threshold, cancelling`,
+        );
+        return { branch: enough ? 'true' : 'false', value: { ...inputs.in, rsvps: { count, rate } } };
+    },
+    'confirm-arrangements': async ({ node, inputs, emit }) => {
+        await wait(650);
+        const headcount = inputs.in.rsvps.count;
+        const arrangements = { catering: `Confirmed — ${headcount} meals`, av: 'Confirmed', seating: `Theater, ${headcount}`, finalHeadcount: headcount };
+        say(emit, node, 'info', `Arrangements confirmed — catering for ${headcount}, AV ${arrangements.av}, ${arrangements.seating}`);
+        return { ...inputs.in, arrangements };
+    },
+    'cancel-event': ({ node, inputs, emit }) => {
+        const { event } = inputs.in;
+        say(emit, node, 'info', `✗ Event "${event.name}" cancelled — not enough RSVPs, refunds and notices issued`);
+        return { status: 'cancelled', summary: { id: event.id, name: event.name } };
+    },
+    'day-of-checklist': async ({ node, inputs, emit }) => {
+        await wait(600);
+        const checklist = {
+            items: ['Registration desk', 'Badges printed', 'AV check', 'Catering setup', 'Signage'],
+            completed: 5,
+            total: 5,
+        };
+        say(emit, node, 'info', `Day-of checklist complete — ${checklist.completed}/${checklist.total}: ${checklist.items.join(', ')}`);
+        return { ...inputs.in, checklist };
+    },
+    'follow-up': async ({ node, inputs, emit }) => {
+        await wait(550);
+        const followUp = { surveysSent: inputs.in.rsvps.count, npsScore: 64, thankYouSent: true };
+        say(emit, node, 'info', `Follow-up sent — ${followUp.surveysSent} surveys, thank-you notes, NPS ${followUp.npsScore}`);
+        return { ...inputs.in, followUp };
+    },
+    'event-complete': ({ node, inputs, emit }) => {
+        const { event, rsvps } = inputs.in;
+        say(emit, node, 'info', `✅ "${event.name}" complete — ${rsvps.count} attended, surveys out, wrap-up done`);
+        return { status: 'complete', summary: { id: event.id, name: event.name, attendees: rsvps.count } };
+    },
+};
+
+// ── Return & Refund ───────────────────────────────────────────────────────
+const returnRefundExecutors = {
+    trigger: async ({ node, emit }) => {
+        const request = {
+            id: rid('RMA-', 5),
+            customer: 'Priya Sharma',
+            orderNumber: rid('ORD-', 6),
+            item: 'Noise-Cancelling Headphones',
+            reason: 'Defective — left earcup crackling',
+            submittedAt: '2026-06-09',
+        };
+        say(
+            emit,
+            node,
+            'info',
+            `Return request ${request.id} from ${request.customer} — order ${request.orderNumber}, "${request.item}" (${request.reason})`,
+        );
+        return { request };
+    },
+    'verify-purchase': async ({ node, inputs, emit }) => {
+        await wait(600);
+        const { request } = inputs.in;
+        const purchase = { verified: true, purchaseDate: '2026-05-02', price: 279.99, withinWindow: true, daysSincePurchase: 38 };
+        say(
+            emit,
+            node,
+            'info',
+            `Purchase verified — ${request.orderNumber} on ${purchase.purchaseDate}, $${purchase.price}, ${purchase.daysSincePurchase} days ago (within window)`,
+        );
+        return { ...inputs.in, purchase };
+    },
+    'inspect-return': async ({ node, inputs, emit }) => {
+        await wait(650);
+        const inspection = { condition: 'Like new — original packaging', restockable: true, inspector: 'Returns Team', defectConfirmed: true };
+        say(emit, node, 'info', `Return inspected — ${inspection.condition}, restockable: ${inspection.restockable}, defect confirmed`);
+        return { ...inputs.in, inspection };
+    },
+    'approval-check': ({ node, inputs, emit }) => {
+        const { purchase, inspection } = inputs.in;
+        const isApproved = purchase.withinWindow && inspection.defectConfirmed;
+        say(
+            emit,
+            node,
+            isApproved ? 'info' : 'warn',
+            isApproved
+                ? `Approved — within the return window and defect confirmed, processing refund`
+                : `Denied — outside the return window or condition issues`,
+        );
+        return { branch: isApproved ? 'true' : 'false', value: inputs.in };
+    },
+    'process-refund': async ({ node, inputs, emit }) => {
+        await wait(650);
+        const { purchase } = inputs.in;
+        const refund = {
+            amount: purchase.price,
+            method: 'Original payment (Visa ****4242)',
+            transactionId: rid('RFND-', 8),
+            eta: '3-5 business days',
+        };
+        say(emit, node, 'info', `Refund processed — $${refund.amount} to ${refund.method}, txn ${refund.transactionId} (ETA ${refund.eta})`);
+        return { ...inputs.in, refund };
+    },
+    'deny-refund': ({ node, inputs, emit }) => {
+        const { request } = inputs.in;
+        say(emit, node, 'info', `✗ Refund denied for ${request.id} — ${request.customer} notified of the decision`);
+        return { status: 'denied', summary: { id: request.id, customer: request.customer } };
+    },
+    'notify-customer': async ({ node, inputs, emit }) => {
+        await wait(500);
+        const { request, refund } = inputs.in;
+        const notification = { channel: 'Email', to: 'priya.sharma@gmail.com', message: `Refund of $${refund.amount} is on its way` };
+        say(emit, node, 'info', `Customer notified — ${notification.channel} to ${request.customer}: refund $${refund.amount} confirmed`);
+        return { ...inputs.in, notification };
+    },
+    'case-closed': ({ node, inputs, emit }) => {
+        const { request, refund } = inputs.in;
+        say(emit, node, 'info', `✅ Case ${request.id} closed — $${refund.amount} refunded to ${request.customer}`);
+        return { status: 'closed', summary: { id: request.id, customer: request.customer, amount: refund.amount } };
+    },
+};
+
 // Each template's per-node executors layered over the generic kind-based
 // fallbacks, selected by the `type` URL parameter at render time.
 const executorsByType = {
     onboarding: { ...genericExecutors, ...onboardingExecutors },
     order: { ...genericExecutors, ...orderExecutors },
     bugreport: { ...genericExecutors, ...bugReportExecutors },
+    jobapplication: { ...genericExecutors, ...jobApplicationExecutors },
+    contentpublishing: { ...genericExecutors, ...contentPublishingExecutors },
+    budgetapproval: { ...genericExecutors, ...budgetApprovalExecutors },
+    ptorequest: { ...genericExecutors, ...ptoRequestExecutors },
+    productrecall: { ...genericExecutors, ...productRecallExecutors },
+    eventplanning: { ...genericExecutors, ...eventPlanningExecutors },
+    returnrefund: { ...genericExecutors, ...returnRefundExecutors },
 };
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -457,6 +1268,62 @@ const toastMetaByType = {
         backlog: (r) => ({ title: 'Added to Backlog', description: `${r.plan.ticket} · ${r.plan.sprint}`, variant: 'info' }),
         fix: (r) => ({ title: 'Fix Verified', description: `${r.fix.testsPassed} tests · ${r.fix.pr}`, variant: 'success' }),
         close: (r) => ({ title: 'Bug Closed', description: `${r.summary.bug} resolved`, variant: 'success' }),
+    },
+    jobapplication: {
+        'screen-resume': (r) => ({ title: 'Resume Screened', description: `Score ${r.screening.score}/100 · ${r.screening.yearsExperience} yrs exp`, variant: 'info' }),
+        'phone-interview': (r) => ({ title: 'Phone Screen Passed', description: `${r.phoneInterview.interviewer} · ${r.phoneInterview.score}/10`, variant: 'success' }),
+        'tech-interview': (r) => ({ title: 'Technical Interview Done', description: `${r.techInterview.result} · ${r.techInterview.score}/10`, variant: 'success' }),
+        'send-offer': (r) => ({ title: 'Offer Sent', description: `$${r.offer.baseSalary.toLocaleString()} base · starts ${r.offer.startDate}`, variant: 'success' }),
+        'send-rejection': (r) => ({ title: 'Rejection Sent', description: `${r.candidateName} — not moving forward`, variant: 'error' }),
+        'onboarding-started': (r) => ({ title: 'Onboarding Started', description: `${r.summary.candidate} starts ${r.summary.startDate}`, variant: 'success' }),
+    },
+    contentpublishing: {
+        'editorial-review': (r) => ({ title: 'Review Complete', description: `${r.review.editor} · ${r.review.grammarIssues} issues · readability ${r.review.readabilityScore}`, variant: 'info' }),
+        'seo-check': (r) => ({ title: 'SEO Passed', description: `Score ${r.seo.score}/100 · “${r.seo.focusKeyword}”`, variant: 'success' }),
+        'schedule-post': (r) => ({ title: 'Post Scheduled', description: `${r.schedule.publishDate} · ${r.schedule.channels.join(', ')}`, variant: 'success' }),
+        'request-changes': (r) => ({ title: 'Changes Requested', description: `“${r.title}” sent back to the author`, variant: 'warning' }),
+        published: (r) => ({ title: 'Post Published', description: `“${r.summary.title}” is live`, variant: 'success' }),
+    },
+    budgetapproval: {
+        'validate-budget': (r) => ({ title: 'Budget Validated', description: `${r.validation.glCode} · $${r.validation.remainingBudget.toLocaleString()} left`, variant: 'info' }),
+        'department-review': (r) => ({ title: 'Department Approved', description: `${r.deptReview.reviewer} · ${r.deptReview.recommendation}`, variant: 'success' }),
+        'executive-approval': (r) => ({ title: 'Executive Sign-off', description: `${r.approval.approver} approved`, variant: 'success' }),
+        'manager-approval': (r) => ({ title: 'Manager Reviewed', description: `${r.approval.approver} · ${r.approval.decision}`, variant: 'warning' }),
+        approved: (r) => ({ title: 'Budget Approved', description: `${r.summary.id} · $${r.summary.amount.toLocaleString()}`, variant: 'success' }),
+        denied: (r) => ({ title: 'Budget Denied', description: `${r.summary.id} — ${r.summary.reason}`, variant: 'error' }),
+    },
+    ptorequest: {
+        'check-coverage': (r) => ({ title: 'Coverage Checked', description: `${r.coverage.status} · backup ${r.coverage.backupAssigned}`, variant: 'info' }),
+        'manager-review': (r) => ({ title: 'Request Reviewed', description: `${r.review.manager} · ${r.review.decision}`, variant: 'success' }),
+        'update-calendar': (r) => ({ title: 'Calendar Updated', description: `${r.calendar.system} · ${r.calendar.eventId}`, variant: 'success' }),
+        'deny-request': (r) => ({ title: 'Request Denied', description: `${r.summary.employee} — request not approved`, variant: 'error' }),
+        'notify-team': (r) => ({ title: 'Team Notified', description: `${r.notification.channel} · ${r.notification.recipients} people`, variant: 'info' }),
+        confirmed: (r) => ({ title: 'PTO Confirmed', description: `${r.summary.employee} · ${r.summary.days} days`, variant: 'success' }),
+    },
+    productrecall: {
+        'assess-scope': (r) => ({ title: 'Scope Assessed', description: `${r.scope.severity} severity · ${r.scope.affectedUnits.toLocaleString()} units`, variant: 'warning' }),
+        'notify-regulators': (r) => ({ title: 'Regulators Notified', description: `${r.regulatory.agency} · case ${r.regulatory.caseNumber}`, variant: 'info' }),
+        'monitor-situation': (r) => ({ title: 'Monitoring Started', description: `${r.monitoring.cadence} · ${r.monitoring.owner}`, variant: 'info' }),
+        'customer-alert': (r) => ({ title: 'Customers Alerted', description: `${r.alert.reach.toLocaleString()} via ${r.alert.channels.join(', ')}`, variant: 'warning' }),
+        'return-process': (r) => ({ title: 'Returns Processed', description: `${(r.returns.returnRate * 100).toFixed(0)}% returned · ${r.returns.unitsReturned.toLocaleString()} units`, variant: 'success' }),
+        resolved: (r) => ({ title: 'Recall Resolved', description: `${r.summary.id} · ${r.summary.unitsReturned.toLocaleString()} units returned`, variant: 'success' }),
+    },
+    eventplanning: {
+        'book-venue': (r) => ({ title: 'Venue Booked', description: `${r.venue.name} · $${r.venue.cost.toLocaleString()}`, variant: 'success' }),
+        'send-invites': (r) => ({ title: 'Invites Sent', description: `${r.invites.sent} sent · RSVP by ${r.invites.rsvpDeadline}`, variant: 'info' }),
+        'confirm-arrangements': (r) => ({ title: 'Arrangements Confirmed', description: `Catering for ${r.arrangements.finalHeadcount} · AV ${r.arrangements.av}`, variant: 'success' }),
+        'cancel-event': (r) => ({ title: 'Event Cancelled', description: `“${r.summary.name}” called off`, variant: 'error' }),
+        'day-of-checklist': (r) => ({ title: 'Checklist Complete', description: `${r.checklist.completed}/${r.checklist.total} items done`, variant: 'success' }),
+        'follow-up': (r) => ({ title: 'Follow-up Sent', description: `${r.followUp.surveysSent} surveys · NPS ${r.followUp.npsScore}`, variant: 'info' }),
+        'event-complete': (r) => ({ title: 'Event Complete', description: `${r.summary.name} · ${r.summary.attendees} attended`, variant: 'success' }),
+    },
+    returnrefund: {
+        'verify-purchase': (r) => ({ title: 'Purchase Verified', description: `${r.purchase.purchaseDate} · $${r.purchase.price}`, variant: 'info' }),
+        'inspect-return': (r) => ({ title: 'Return Inspected', description: `${r.inspection.condition}`, variant: 'success' }),
+        'process-refund': (r) => ({ title: 'Refund Processed', description: `$${r.refund.amount} · ${r.refund.transactionId}`, variant: 'success' }),
+        'deny-refund': (r) => ({ title: 'Refund Denied', description: `${r.summary.customer} — request not approved`, variant: 'error' }),
+        'notify-customer': (r) => ({ title: 'Customer Notified', description: `${r.notification.channel} · refund confirmed`, variant: 'info' }),
+        'case-closed': (r) => ({ title: 'Case Closed', description: `${r.summary.id} · $${r.summary.amount} refunded`, variant: 'success' }),
     },
 };
 
@@ -516,6 +1383,55 @@ const accentThemes = {
         button: 'red',
         text: 'text-red-600 dark:text-red-400',
     },
+    jobapplication: {
+        label: 'Job Application',
+        bar: 'bg-purple-500',
+        badge: 'bg-purple-100 text-purple-700 ring-purple-200 dark:bg-purple-500/15 dark:text-purple-300 dark:ring-purple-500/30',
+        button: 'purple',
+        text: 'text-purple-600 dark:text-purple-400',
+    },
+    contentpublishing: {
+        label: 'Content Publishing',
+        bar: 'bg-teal-500',
+        badge: 'bg-teal-100 text-teal-700 ring-teal-200 dark:bg-teal-500/15 dark:text-teal-300 dark:ring-teal-500/30',
+        button: 'teal',
+        text: 'text-teal-600 dark:text-teal-400',
+    },
+    budgetapproval: {
+        label: 'Budget Approval',
+        bar: 'bg-amber-500',
+        badge: 'bg-amber-100 text-amber-700 ring-amber-200 dark:bg-amber-500/15 dark:text-amber-300 dark:ring-amber-500/30',
+        button: 'amber',
+        text: 'text-amber-600 dark:text-amber-400',
+    },
+    ptorequest: {
+        label: 'PTO Request',
+        bar: 'bg-green-500',
+        badge: 'bg-green-100 text-green-700 ring-green-200 dark:bg-green-500/15 dark:text-green-300 dark:ring-green-500/30',
+        button: 'green',
+        text: 'text-green-600 dark:text-green-400',
+    },
+    productrecall: {
+        label: 'Product Recall',
+        bar: 'bg-red-500',
+        badge: 'bg-red-100 text-red-700 ring-red-200 dark:bg-red-500/15 dark:text-red-300 dark:ring-red-500/30',
+        button: 'red',
+        text: 'text-red-600 dark:text-red-400',
+    },
+    eventplanning: {
+        label: 'Event Planning',
+        bar: 'bg-pink-500',
+        badge: 'bg-pink-100 text-pink-700 ring-pink-200 dark:bg-pink-500/15 dark:text-pink-300 dark:ring-pink-500/30',
+        button: 'pink',
+        text: 'text-pink-600 dark:text-pink-400',
+    },
+    returnrefund: {
+        label: 'Return & Refund',
+        bar: 'bg-violet-500',
+        badge: 'bg-violet-100 text-violet-700 ring-violet-200 dark:bg-violet-500/15 dark:text-violet-300 dark:ring-violet-500/30',
+        button: 'violet',
+        text: 'text-violet-600 dark:text-violet-400',
+    },
 };
 
 const neutralAccent = {
@@ -573,6 +1489,7 @@ function WorkflowEditor() {
     const currentRunRef = useRef(null);
     const [runHistory, setRunHistory] = useState([]);
     const [showHistory, setShowHistory] = useState(false);
+    const [showShortcuts, setShowShortcuts] = useState(false);
 
     const markRunning = useCallback(() => {
         setRunning(true);
@@ -802,20 +1719,39 @@ function WorkflowEditor() {
     const canUndo = pastRef.current.length > 0;
     const canRedo = futureRef.current.length > 0;
 
-    // Keyboard shortcuts (⌘/Ctrl+Z undo, ⌘/Ctrl+Shift+Z redo), except while
-    // typing in a field so native text undo still works. Held in a ref so the
-    // listener stays mounted once but always calls the latest handlers.
-    const shortcutsRef = useRef(null);
-    shortcutsRef.current = { undo, redo };
+    // Global keyboard shortcuts. The handlers live on a ref (assigned further
+    // down, once save/export exist) so the listener mounts once but always calls
+    // the latest closures. ⌘S / ⌘E work anywhere (and pre-empt the browser's own
+    // save/search); ⌘Z / ⌘⇧Z are skipped while typing so native text undo still
+    // works; Escape closes any open panel.
+    const shortcutsRef = useRef({});
     useEffect(() => {
         const onKey = (e) => {
-            if (!(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== 'z') return;
-            const el = e.target;
-            const tag = (el?.tagName || '').toLowerCase();
-            if (tag === 'input' || tag === 'textarea' || el?.isContentEditable) return;
-            e.preventDefault();
-            if (e.shiftKey) shortcutsRef.current.redo();
-            else shortcutsRef.current.undo();
+            const s = shortcutsRef.current;
+            if (e.key === 'Escape') {
+                s.closePanels?.();
+                return;
+            }
+            if (!(e.metaKey || e.ctrlKey)) return;
+            const k = e.key.toLowerCase();
+            if (k === 's') {
+                e.preventDefault();
+                s.save?.();
+                return;
+            }
+            if (k === 'e') {
+                e.preventDefault();
+                s.doExport?.();
+                return;
+            }
+            if (k === 'z') {
+                const el = e.target;
+                const tag = (el?.tagName || '').toLowerCase();
+                if (tag === 'input' || tag === 'textarea' || el?.isContentEditable) return;
+                e.preventDefault();
+                if (e.shiftKey) s.redo?.();
+                else s.undo?.();
+            }
         };
         window.addEventListener('keydown', onKey);
         return () => window.removeEventListener('keydown', onKey);
@@ -1002,6 +1938,18 @@ function WorkflowEditor() {
     const saveWorkflow = async () => {
         await persist(false);
         setAutoSaveTick((t) => t + 1);
+    };
+
+    // Wire the keyboard shortcuts to the latest handlers (see the listener above).
+    shortcutsRef.current = {
+        undo,
+        redo,
+        save: saveWorkflow,
+        doExport: exportJson,
+        closePanels: () => {
+            setShowShortcuts(false);
+            setShowHistory(false);
+        },
     };
 
     // Auto-save: every 30s, save if there are unsaved changes and the workflow is
@@ -1310,6 +2258,20 @@ function WorkflowEditor() {
 
                         {/* "Drag to connect" nudge while there's a lone, unconnected node. */}
                         <ConnectHint containerRef={editorBoxRef} active={showConnectHint} />
+
+                        {/* Keyboard-shortcuts help — bottom-right, above the zoom controls. */}
+                        <div className="absolute bottom-44 right-4 z-20">
+                            <Tooltip label="Keyboard shortcuts" placement="top">
+                                <button
+                                    type="button"
+                                    onClick={() => setShowShortcuts(true)}
+                                    aria-label="Keyboard shortcuts"
+                                    className="flex h-9 w-9 items-center justify-center rounded-full border border-gray-200 bg-white/80 text-base font-semibold text-gray-600 shadow-md backdrop-blur transition-colors hover:bg-white hover:text-gray-900 dark:border-gray-700 dark:bg-gray-800/80 dark:text-gray-300 dark:hover:bg-gray-800 dark:hover:text-white"
+                                >
+                                    ?
+                                </button>
+                            </Tooltip>
+                        </div>
                     </div>
 
                     {/* Right sidebar: configure the selected node. Edits flow back
@@ -1327,6 +2289,9 @@ function WorkflowEditor() {
                 onClose={() => setShowHistory(false)}
                 onClear={() => setRunHistory([])}
             />
+
+            {/* Keyboard shortcuts help modal. */}
+            <ShortcutsModal open={showShortcuts} onClose={() => setShowShortcuts(false)} />
 
             {/* Warn before leaving with unsaved changes (in-app navigation). */}
             <UnsavedChangesModal
