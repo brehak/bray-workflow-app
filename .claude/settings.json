@@ -1,0 +1,36 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node -e ' *)",
+      "Bash(rm -rf /tmp/cdp.mjs /tmp/cdp-profile /tmp/wf7.json /tmp/wf8.json 2>/dev/null; pkill -f \"Google Chrome.*headless\" 2>/dev/null; echo \"cleaned\")",
+      "Bash(node repro.mjs)",
+      "Bash(pkill -f \"Google Chrome.*headless\")",
+      "Bash(pkill -f \"remote-debugging-port\")",
+      "Bash(rm -rf /tmp/repro-profile /tmp/cdp-profile)",
+      "Bash(sed -i '' 's/9333/9344/g' /tmp/repro.mjs)",
+      "Bash(awk '/function NodeConfigPanel/,/^}/' index.js)",
+      "Bash(awk '/InputProps = |InputBaseProps = /{f=1} f{print} /\\\\};/{if\\(f\\)c++; if\\(c>=2\\)exit}' index.d.ts)",
+      "Bash(awk '/type FieldProps/{f=1} f{print} /\\\\};/{if\\(f\\)exit}' index.d.ts)",
+      "Bash(sed -n '268,285p' index.d.ts)",
+      "Bash(sed -n '286,335p' index.d.ts)",
+      "Bash(echo \"---exit: $?---\")",
+      "Bash(rm -rf /tmp/panel-profile)",
+      "Bash(node panel.mjs)",
+      "Bash(awk 'NR>1{print $1,$9}')",
+      "Bash(curl -s -o /dev/null -w \"app8000:%{http_code}\\\\n\" \"http://127.0.0.1:8000/workflow?id=8\")",
+      "Bash(rm -rf /tmp/dbg-profile)",
+      "Bash(node dbg.mjs)",
+      "Bash(sed -i '' 's/r.result?.value/r.result?.result?.value/' panel.mjs)",
+      "Bash(cd /Users/braybrayden/bray-workflow-app *)",
+      "Bash(sqlite3 database/database.sqlite 'select count\\(*\\) from workflows;')",
+      "Bash(echo \"workflows before: $\\(sqlite3 database/database.sqlite 'select count\\(*\\) from workflows;'\\)\")",
+      "Bash(rm -rf /tmp/as2-profile)",
+      "Bash(node autosave2.mjs)",
+      "Bash(echo \"build exit: $?\")"
+    ],
+    "additionalDirectories": [
+      "/private/tmp",
+      "/tmp"
+    ]
+  }
+}

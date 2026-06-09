@@ -18,7 +18,9 @@ class WorkflowController extends Controller
             'name'        => 'required|string|max:255',
             'description' => 'nullable|string',
             'nodes'       => 'required|array',
-            'edges'       => 'required|array',
+            // `present` (not `required`) so a workflow with nodes but no edges
+            // yet — e.g. a single starter node being auto-saved — can be saved.
+            'edges'       => 'present|array',
             'tags'        => 'nullable|array',
             'tags.*'      => 'string',
         ]);

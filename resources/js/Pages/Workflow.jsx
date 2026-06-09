@@ -1,14 +1,18 @@
-import { Head, Link } from '@inertiajs/react';
+import { Head, router } from '@inertiajs/react';
 import { FlowEditor } from '@particle-academy/fancy-flow';
 import { useFlowRunnerUx } from '@particle-academy/fancy-flow/ux';
 import { Heading, Pillbox, Text, Toast, useToast } from '@particle-academy/react-fancy';
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Workflow as WorkflowIcon, ArrowLeft, Save, Download, Upload } from 'lucide-react';
+import { Workflow as WorkflowIcon, ArrowLeft, Save, Download, Upload, Undo2, Redo2 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import GradientDivider from '../Components/GradientDivider';
+import ConnectHint from '../Components/ConnectHint';
 import Logo from '../Components/Logo';
 import NavButton from '../Components/NavButton';
+import NodeConfigPanel from '../Components/NodeConfigPanel';
+import SaveStatusIndicator from '../Components/SaveStatusIndicator';
+import UnsavedChangesModal from '../Components/UnsavedChangesModal';
 import ThemeToggle from '../Components/ThemeToggle';
 import Tooltip from '../Components/Tooltip';
 import '../../css/flow-animations.css';
@@ -84,6 +88,38 @@ const templates = {
 };
 
 const blankGraph = { nodes: [], edges: [] };
+
+// A stable fingerprint of a workflow's *meaningful* content, used to tell whether
+// there are unsaved changes. We include only the fields we persist (name,
+// description, tags, and each node's id/type/position/data + each edge's
+// endpoints) and deliberately drop React Flow's runtime fields — `selected`,
+// `dragging`, `measured`, etc. — so merely clicking or hovering a node, or React
+// Flow re-measuring after load, never counts as an edit.
+// Just the graph's meaningful shape (ignores React Flow runtime fields). Used by
+// both the unsaved-changes check and the undo/redo history to coalesce noise
+// (selection, hover, re-measuring) into "no real change".
+const graphSignature = (nodes, edges) =>
+    JSON.stringify({
+        nodes: (nodes ?? []).map((n) => ({ id: n.id, type: n.type, position: n.position, data: n.data })),
+        edges: (edges ?? []).map((e) => ({
+            id: e.id,
+            source: e.source,
+            target: e.target,
+            sourceHandle: e.sourceHandle ?? null,
+            targetHandle: e.targetHandle ?? null,
+        })),
+    });
+
+const workflowFingerprint = (name, description, tags, nodes, edges) =>
+    JSON.stringify({
+        name: (name ?? '').trim(),
+        description: description ?? '',
+        tags: tags ?? [],
+        graph: graphSignature(nodes, edges),
+    });
+
+// Cap how many undo steps we retain.
+const MAX_HISTORY = 50;
 
 // ──────────────────────────────────────────────────────────────────────────
 // Executors
@@ -566,30 +602,225 @@ function WorkflowEditor() {
     const [dbId, setDbId] = useState(null);
     const [status, setStatus] = useState(null);
 
+    // Auto-save bookkeeping. `lastSavedSig` is the fingerprint of the content as
+    // of the last successful save (null until the first save / DB load); the
+    // current content differing from it means there are unsaved changes.
+    // `isSaving` drives the "Saving…" indicator; `savingRef` guards against a
+    // manual and an auto save overlapping. `autoSaveTick` is bumped on a manual
+    // save to restart the 30s countdown.
+    const [lastSavedSig, setLastSavedSig] = useState(null);
+    const [isSaving, setIsSaving] = useState(false);
+    const savingRef = useRef(false);
+    const [autoSaveTick, setAutoSaveTick] = useState(0);
+
     // Add a tag if not already present (used by the quick-pick buttons).
     const addTag = (tag) => setTags((prev) => (prev.includes(tag) ? prev : [...prev, tag]));
 
-    // FlowEditor is uncontrolled — it seeds its canvas from `initial` only at
-    // mount. Bumping this key remounts it so a wholesale graph replacement
-    // (load-from-db / import) actually shows on the canvas. We do NOT bump it on
-    // ordinary `onChange` edits, so editing keeps the editor's internal state.
+    // FlowEditor runs in CONTROLLED mode (`value={graph}` + `onChange`), so the
+    // canvas always reflects `graph` — that's what lets the config panel edit a
+    // node and have the change show up live. A wholesale replacement (import)
+    // still bumps this key to force a remount, purely so React Flow re-runs its
+    // initial `fitView` and frames the new graph. Ordinary edits never bump it.
     const [editorKey, setEditorKey] = useState(0);
 
+    // The crux of correct load-by-id: because the editor only reads `initial`
+    // once at mount, we must NOT mount it with the blank graph and then try to
+    // swap the fetched data in — the uncontrolled editor ignores the later prop
+    // change and the canvas stays empty. Instead we gate the editor behind
+    // `ready`: false while a saved workflow is still loading, flipping to true
+    // only once `graph` already holds the fetched nodes. The editor then mounts
+    // for the first time already seeded with the real data. Templates / new
+    // workflows have their data synchronously, so they start ready.
+    const [ready, setReady] = useState(!savedId);
+
+    // Load (or re-load) the saved workflow whenever the `?id=` changes. Keyed on
+    // `savedId` rather than `[]` so that navigating from one saved workflow to
+    // another — when Inertia preserves this component instead of remounting it —
+    // actually fetches the new graph. `ignore` guards against an out-of-order
+    // response if the id changes again before the fetch resolves.
     useEffect(() => {
-        if (savedId) {
-            fetch(`/workflows/${savedId}`)
-                .then((r) => r.json())
-                .then((data) => {
-                    setGraph({ nodes: data.nodes, edges: data.edges });
-                    setName(data.name);
-                    setDescription(data.description ?? '');
-                    setTags(data.tags ?? []);
-                    setDbId(data.id);
-                    setStatus('Loaded from database');
-                    setEditorKey((k) => k + 1);
-                });
+        if (!savedId) {
+            setReady(true);
+            return;
         }
+        setReady(false);
+        let ignore = false;
+        fetch(`/workflows/${savedId}`)
+            .then((r) => r.json())
+            .then((data) => {
+                if (ignore) return;
+                const loaded = { nodes: data.nodes, edges: data.edges };
+                setGraph(loaded);
+                resetHistory(loaded); // start a fresh undo history at the loaded state
+                setName(data.name);
+                setDescription(data.description ?? '');
+                setTags(data.tags ?? []);
+                setDbId(data.id);
+                // Freshly loaded content is, by definition, already saved.
+                setLastSavedSig(
+                    workflowFingerprint(data.name, data.description ?? '', data.tags ?? [], data.nodes, data.edges),
+                );
+                setStatus('Loaded from database');
+                setReady(true);
+            });
+        return () => {
+            ignore = true;
+        };
+    }, [savedId]);
+
+    // The node the user has selected on the canvas. In controlled mode React Flow
+    // marks the clicked node with `selected: true` and routes that through
+    // `onChange`, so we can read the selection straight off `graph`.
+    const selectedNode = graph.nodes.find((n) => n.selected) ?? null;
+
+    // ── Undo / redo history ─────────────────────────────────────────────────
+    // fancy-flow has no undo API, so we keep our own. The editor is controlled,
+    // so every change flows through `graph`; we snapshot it into past/future
+    // stacks. `committedRef` is the current baseline; `latestGraphRef` is the
+    // most recent (possibly mid-burst) graph. Commits are debounced so a drag or
+    // a burst of typing collapses into a single undo step, and de-duplicated by
+    // `graphSignature` so selection/hover/re-measure never create a step.
+    const pastRef = useRef([]);
+    const futureRef = useRef([]);
+    const committedRef = useRef(template ?? blankGraph);
+    const latestGraphRef = useRef(template ?? blankGraph);
+    const commitTimerRef = useRef(null);
+    const [histVersion, setHistVersion] = useState(0);
+
+    const commitHistory = () => {
+        commitTimerRef.current = null;
+        const g = latestGraphRef.current;
+        const base = committedRef.current;
+        if (graphSignature(g.nodes, g.edges) === graphSignature(base.nodes, base.edges)) return;
+        pastRef.current = [...pastRef.current, base].slice(-MAX_HISTORY);
+        futureRef.current = [];
+        committedRef.current = g;
+        setHistVersion((v) => v + 1);
+    };
+
+    // Record a graph change (from the canvas or the config panel) for history.
+    const scheduleCommit = (g) => {
+        latestGraphRef.current = g;
+        if (commitTimerRef.current) clearTimeout(commitTimerRef.current);
+        commitTimerRef.current = setTimeout(commitHistory, 500);
+    };
+
+    // The editor's onChange — keep the canvas controlled and feed history.
+    const onGraphChange = (g) => {
+        setGraph(g);
+        scheduleCommit(g);
+    };
+
+    // Discard history (used on a wholesale graph swap: db load / import).
+    const resetHistory = (g) => {
+        if (commitTimerRef.current) {
+            clearTimeout(commitTimerRef.current);
+            commitTimerRef.current = null;
+        }
+        pastRef.current = [];
+        futureRef.current = [];
+        committedRef.current = g;
+        latestGraphRef.current = g;
+        setHistVersion((v) => v + 1);
+    };
+
+    const undo = () => {
+        // Flush any pending edit so it becomes its own undo step first.
+        if (commitTimerRef.current) {
+            clearTimeout(commitTimerRef.current);
+            commitHistory();
+        }
+        if (pastRef.current.length === 0) return;
+        const prev = pastRef.current[pastRef.current.length - 1];
+        pastRef.current = pastRef.current.slice(0, -1);
+        futureRef.current = [committedRef.current, ...futureRef.current];
+        committedRef.current = prev;
+        latestGraphRef.current = prev;
+        setGraph(prev);
+        setHistVersion((v) => v + 1);
+        toast({ title: 'Undo', variant: 'info' });
+    };
+
+    const redo = () => {
+        if (commitTimerRef.current) {
+            clearTimeout(commitTimerRef.current);
+            commitHistory();
+        }
+        if (futureRef.current.length === 0) return;
+        const next = futureRef.current[0];
+        futureRef.current = futureRef.current.slice(1);
+        pastRef.current = [...pastRef.current, committedRef.current];
+        committedRef.current = next;
+        latestGraphRef.current = next;
+        setGraph(next);
+        setHistVersion((v) => v + 1);
+        toast({ title: 'Redo', variant: 'info' });
+    };
+
+    // histVersion is read so the button-enabled states recompute on each change.
+    void histVersion;
+    const canUndo = pastRef.current.length > 0;
+    const canRedo = futureRef.current.length > 0;
+
+    // Keyboard shortcuts (⌘/Ctrl+Z undo, ⌘/Ctrl+Shift+Z redo), except while
+    // typing in a field so native text undo still works. Held in a ref so the
+    // listener stays mounted once but always calls the latest handlers.
+    const shortcutsRef = useRef(null);
+    shortcutsRef.current = { undo, redo };
+    useEffect(() => {
+        const onKey = (e) => {
+            if (!(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== 'z') return;
+            const el = e.target;
+            const tag = (el?.tagName || '').toLowerCase();
+            if (tag === 'input' || tag === 'textarea' || el?.isContentEditable) return;
+            e.preventDefault();
+            if (e.shiftKey) shortcutsRef.current.redo();
+            else shortcutsRef.current.undo();
+        };
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
     }, []);
+
+    useEffect(() => () => commitTimerRef.current && clearTimeout(commitTimerRef.current), []);
+
+    // Apply a config-panel edit: replace just the edited node in `graph`. Because
+    // the editor is controlled, this immediately re-renders the node on the
+    // canvas, and the new data is part of `graph` when the workflow is saved. The
+    // change is also recorded for undo/redo.
+    const updateNode = (nextNode) => {
+        const next = { ...graph, nodes: graph.nodes.map((n) => (n.id === nextNode.id ? nextNode : n)) };
+        setGraph(next);
+        scheduleCommit(next);
+    };
+
+    // The editor box, so the "Drag to connect" hint can position itself against
+    // the node's output port.
+    const editorBoxRef = useRef(null);
+
+    // Briefly pulse the ports of a node the moment it's dropped onto the canvas.
+    // We detect a drop as "exactly one new node id appeared" — a wholesale load
+    // or import adds many at once, so those don't trigger it.
+    const [pulseNodeId, setPulseNodeId] = useState(null);
+    const prevNodeIdsRef = useRef(null);
+    useEffect(() => {
+        const ids = new Set(graph.nodes.map((n) => n.id));
+        const prev = prevNodeIdsRef.current;
+        if (prev) {
+            const added = [...ids].filter((id) => !prev.has(id));
+            if (added.length === 1) setPulseNodeId(added[0]);
+        }
+        prevNodeIdsRef.current = ids;
+    }, [graph.nodes]);
+
+    // Clear the pulse after it has played (two ~0.85s iterations).
+    useEffect(() => {
+        if (!pulseNodeId) return;
+        const t = setTimeout(() => setPulseNodeId(null), 1800);
+        return () => clearTimeout(t);
+    }, [pulseNodeId]);
+
+    // Show the connect hint while the canvas is a single, unconnected node.
+    const showConnectHint = ready && graph.nodes.length === 1 && graph.edges.length === 0;
 
     // Download the current workflow as a JSON file named after it.
     const exportJson = () => {
@@ -623,7 +854,9 @@ function WorkflowEditor() {
                 if (!data || !Array.isArray(data.nodes) || !Array.isArray(data.edges)) {
                     throw new Error('Missing nodes or edges');
                 }
-                setGraph({ nodes: data.nodes, edges: data.edges });
+                const imported = { nodes: data.nodes, edges: data.edges };
+                setGraph(imported);
+                resetHistory(imported); // an import is a fresh start for undo/redo
                 setName(data.name ?? '');
                 setDescription(data.description ?? '');
                 setTags(Array.isArray(data.tags) ? data.tags : []);
@@ -644,12 +877,26 @@ function WorkflowEditor() {
         input.click();
     };
 
-    const saveWorkflow = async () => {
+    // Fingerprint of the current content + whether it differs from the last save.
+    const currentSig = workflowFingerprint(name, description, tags, graph.nodes, graph.edges);
+    const hasUnsavedChanges = currentSig !== lastSavedSig;
+
+    // Indicator state for the header badge.
+    const saveState = isSaving ? 'saving' : hasUnsavedChanges ? 'unsaved' : 'saved';
+
+    // Shared save core for both the manual button and auto-save. `isAuto` only
+    // affects the chatty status text / name prompt (auto-save stays quiet); the
+    // network call and bookkeeping are identical. Returns true on success.
+    const persist = async (isAuto = false) => {
         if (!name.trim()) {
-            setStatus('Please enter a workflow name');
-            return;
+            if (!isAuto) setStatus('Please enter a workflow name');
+            return false;
         }
-        setStatus('Saving...');
+        if (savingRef.current) return false; // a save is already in flight
+        savingRef.current = true;
+        setIsSaving(true);
+        const sig = workflowFingerprint(name, description, tags, graph.nodes, graph.edges);
+        if (!isAuto) setStatus('Saving...');
         try {
             const payload = {
                 name,
@@ -673,11 +920,76 @@ function WorkflowEditor() {
 
             const data = await res.json();
             setDbId(data.id);
-            setStatus('Saved successfully!');
+            setLastSavedSig(sig); // mark this exact snapshot as saved
+            if (!isAuto) setStatus('Saved successfully!');
+            return true;
         } catch {
-            setStatus('Save failed');
+            if (!isAuto) setStatus('Save failed');
+            return false;
+        } finally {
+            savingRef.current = false;
+            setIsSaving(false);
         }
     };
+
+    // Manual Save — same behaviour as before, plus it restarts the auto-save
+    // countdown so the next auto-save is a full 30s away.
+    const saveWorkflow = async () => {
+        await persist(false);
+        setAutoSaveTick((t) => t + 1);
+    };
+
+    // Auto-save: every 30s, save if there are unsaved changes and the workflow is
+    // named with at least one node. Kept in a ref so the interval always runs the
+    // latest closure without being torn down on every keystroke. The interval is
+    // keyed on `autoSaveTick` so a manual save resets the 30s clock.
+    const autoSaveRef = useRef(null);
+    autoSaveRef.current = () => {
+        if (name.trim() && graph.nodes.length > 0 && hasUnsavedChanges && !savingRef.current) {
+            persist(true);
+        }
+    };
+    useEffect(() => {
+        const id = setInterval(() => autoSaveRef.current?.(), 30000);
+        return () => clearInterval(id);
+    }, [autoSaveTick]);
+
+    // ── Unsaved-changes navigation guard ───────────────────────────────────
+    // Only guard when there's actual work to lose (≥1 node and unsaved).
+    const hasUnsavedWork = graph.nodes.length > 0 && hasUnsavedChanges;
+
+    // In-app nav (the header's "Back home" / "Saved Workflows" buttons): if there
+    // are unsaved changes, intercept and show the modal instead of navigating;
+    // `pendingNav` holds the destination until the user decides.
+    const [pendingNav, setPendingNav] = useState(null);
+    const guardedNavigate = (href) => {
+        if (hasUnsavedWork) setPendingNav(href);
+        else router.visit(href);
+    };
+    const handleSaveLeave = async () => {
+        const ok = await persist(false);
+        if (!ok) return; // couldn't save (e.g. no name) — keep the modal open
+        const dest = pendingNav;
+        setPendingNav(null);
+        router.visit(dest);
+    };
+    const handleLeaveWithout = () => {
+        const dest = pendingNav;
+        setPendingNav(null);
+        router.visit(dest);
+    };
+
+    // Native back button / tab close / refresh: trigger the browser's own
+    // "Leave site?" prompt while there are unsaved changes.
+    useEffect(() => {
+        if (!hasUnsavedWork) return;
+        const handler = (e) => {
+            e.preventDefault();
+            e.returnValue = '';
+        };
+        window.addEventListener('beforeunload', handler);
+        return () => window.removeEventListener('beforeunload', handler);
+    }, [hasUnsavedWork]);
 
     return (
         <>
@@ -742,16 +1054,44 @@ function WorkflowEditor() {
                         <Tooltip label="Toggle light / dark mode" placement="bottom">
                             <ThemeToggle />
                         </Tooltip>
+                        {/* Auto-save status — shown once there's a workflow to save. */}
+                        {graph.nodes.length > 0 && <SaveStatusIndicator state={saveState} />}
                         {status && (
                             <Text className="text-sm text-gray-500">{status}</Text>
                         )}
-                        {/* Floating glass toolbar: Save · Export · Import */}
+                        {/* Floating glass toolbar: Undo · Redo · Save · Export · Import */}
                         <motion.div
                             initial={{ opacity: 0, y: -8, scale: 0.98 }}
                             animate={{ opacity: 1, y: 0, scale: 1 }}
                             transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
                             className="inline-flex items-center gap-1 rounded-full border border-white/40 bg-white/60 p-1 shadow-lg shadow-gray-900/5 backdrop-blur-md dark:border-white/10 dark:bg-gray-900/50 dark:shadow-black/20"
                         >
+                            <Tooltip label="Undo (⌘Z)" placement="bottom">
+                                <button
+                                    type="button"
+                                    onClick={undo}
+                                    disabled={!canUndo}
+                                    aria-label="Undo"
+                                    className="inline-flex items-center rounded-full p-2 text-gray-700 transition-colors hover:bg-black/5 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent dark:text-gray-200 dark:hover:bg-white/10 dark:disabled:hover:bg-transparent"
+                                >
+                                    <Undo2 size={16} aria-hidden="true" />
+                                </button>
+                            </Tooltip>
+
+                            <Tooltip label="Redo (⌘⇧Z)" placement="bottom">
+                                <button
+                                    type="button"
+                                    onClick={redo}
+                                    disabled={!canRedo}
+                                    aria-label="Redo"
+                                    className="inline-flex items-center rounded-full p-2 text-gray-700 transition-colors hover:bg-black/5 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent dark:text-gray-200 dark:hover:bg-white/10 dark:disabled:hover:bg-transparent"
+                                >
+                                    <Redo2 size={16} aria-hidden="true" />
+                                </button>
+                            </Tooltip>
+
+                            <span className="h-5 w-px bg-gray-300/70 dark:bg-gray-600/50" aria-hidden="true" />
+
                             <Tooltip label="Save Workflow" placement="bottom">
                                 <button
                                     type="button"
@@ -790,14 +1130,10 @@ function WorkflowEditor() {
                             </Tooltip>
                         </motion.div>
                         <Tooltip label="Browse your saved workflows" placement="bottom">
-                            <Link href="/workflows-list">
-                                <NavButton>Saved Workflows</NavButton>
-                            </Link>
+                            <NavButton onClick={() => guardedNavigate('/workflows-list')}>Saved Workflows</NavButton>
                         </Tooltip>
                         <Tooltip label="Back to home" placement="bottom">
-                            <Link href="/">
-                                <NavButton>Back home</NavButton>
-                            </Link>
+                            <NavButton onClick={() => guardedNavigate('/')}>Back home</NavButton>
                         </Tooltip>
                     </div>
                 </header>
@@ -806,18 +1142,45 @@ function WorkflowEditor() {
                 <GradientDivider />
 
                 <main className="flex-1 p-6">
-                    <div className={`workflow-editor relative ${running ? 'flow-running' : ''}`}>
-                        <FlowEditor
-                            key={editorKey}
-                            initial={graph}
-                            executors={executors}
-                            height={720}
-                            onChange={(g) => setGraph(g)}
-                            metadata={{
-                                name,
-                                description,
-                            }}
-                        />
+                    <div className="flex flex-col gap-4 lg:flex-row">
+                    <div
+                        ref={editorBoxRef}
+                        className={`workflow-editor relative min-w-0 flex-1 ${running ? 'flow-running' : ''}`}
+                    >
+                        {/* Pulse the just-dropped node's ports. Injected as a rule keyed on
+                            the node's data-id since React Flow owns the handle elements. */}
+                        {pulseNodeId && (
+                            <style>{`.workflow-editor .react-flow__node[data-id="${pulseNodeId}"] .react-flow__handle { animation: ff-port-pulse 0.85s ease-in-out 2; }`}</style>
+                        )}
+                        {ready ? (
+                            <FlowEditor
+                                // Remount only on import (editorKey bump) so React Flow
+                                // re-runs fitView to frame a wholesale new graph.
+                                key={editorKey}
+                                // Controlled: the canvas mirrors `graph`, which is how the
+                                // config panel's edits show up live on the nodes.
+                                value={graph}
+                                executors={executors}
+                                height={720}
+                                // We render our own config sidebar (NodeConfigPanel), which
+                                // supports the built-in node types; hide the editor's own.
+                                showPanel={false}
+                                onChange={onGraphChange}
+                                metadata={{
+                                    name,
+                                    description,
+                                }}
+                            />
+                        ) : (
+                            // Saved workflow still loading — hold the space so the editor
+                            // mounts already seeded, instead of mounting blank then swapping.
+                            <div
+                                className="flex items-center justify-center rounded-xl border border-gray-200 bg-white text-sm text-gray-400 dark:border-gray-800 dark:bg-gray-900 dark:text-gray-600"
+                                style={{ height: 720 }}
+                            >
+                                Loading workflow…
+                            </div>
+                        )}
 
                         {/* Friendly empty state — shown on a blank canvas, fades out
                             once the first node is added. `pointer-events-none` keeps
@@ -865,9 +1228,27 @@ function WorkflowEditor() {
                                 </motion.div>
                             )}
                         </AnimatePresence>
+
+                        {/* "Drag to connect" nudge while there's a lone, unconnected node. */}
+                        <ConnectHint containerRef={editorBoxRef} active={showConnectHint} />
+                    </div>
+
+                    {/* Right sidebar: configure the selected node. Edits flow back
+                        into `graph` (controlled editor), so they show on the canvas
+                        live and are saved with the workflow. */}
+                    <NodeConfigPanel node={selectedNode} onChange={updateNode} />
                     </div>
                 </main>
             </div>
+
+            {/* Warn before leaving with unsaved changes (in-app navigation). */}
+            <UnsavedChangesModal
+                open={pendingNav !== null}
+                saving={isSaving}
+                onSaveLeave={handleSaveLeave}
+                onLeave={handleLeaveWithout}
+                onCancel={() => setPendingNav(null)}
+            />
         </>
     );
 }
