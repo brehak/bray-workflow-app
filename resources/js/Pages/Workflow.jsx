@@ -4,13 +4,14 @@ import { useFlowRunnerUx } from '@particle-academy/fancy-flow/ux';
 import { Heading, Pillbox, Text, Toast, useToast } from '@particle-academy/react-fancy';
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Workflow as WorkflowIcon, ArrowLeft, Save, Download, Upload, Undo2, Redo2 } from 'lucide-react';
+import { Workflow as WorkflowIcon, ArrowLeft, Save, Download, Upload, Undo2, Redo2, History } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import GradientDivider from '../Components/GradientDivider';
 import ConnectHint from '../Components/ConnectHint';
 import Logo from '../Components/Logo';
 import NavButton from '../Components/NavButton';
 import NodeConfigPanel from '../Components/NodeConfigPanel';
+import RunHistoryPanel from '../Components/RunHistoryPanel';
 import SaveStatusIndicator from '../Components/SaveStatusIndicator';
 import UnsavedChangesModal from '../Components/UnsavedChangesModal';
 import ThemeToggle from '../Components/ThemeToggle';
@@ -468,18 +469,23 @@ const fireConfetti = () => {
 
 // Wrap an executor registry so each node fires its toast (via the `fire`
 // dispatcher) as it finishes — without touching the underlying executor logic.
-// `hooks.onNodeStart` / `hooks.onNodeDone` let the host observe the run (used
-// here to drive the edge-flow animation and confetti).
+// `hooks.onNodeStart` / `hooks.onNodeDone` / `hooks.onNodeError` let the host
+// observe the run (edge-flow animation, confetti, and the run-history panel).
 const withToasts = (registry, meta, fire, hooks = {}) => {
     const wrapped = {};
     for (const [id, exec] of Object.entries(registry)) {
         wrapped[id] = async (ctx) => {
             hooks.onNodeStart?.(ctx.node);
-            const result = await exec(ctx);
-            const build = meta[id];
-            if (build) fire(build(result));
-            hooks.onNodeDone?.(ctx.node, result);
-            return result;
+            try {
+                const result = await exec(ctx);
+                const build = meta[id];
+                if (build) fire(build(result));
+                hooks.onNodeDone?.(ctx.node, result);
+                return result;
+            } catch (err) {
+                hooks.onNodeError?.(ctx.node, err);
+                throw err; // preserve existing behaviour — the runner still sees the error
+            }
         };
     }
     return wrapped;
@@ -560,15 +566,37 @@ function WorkflowEditor() {
     const [running, setRunning] = useState(false);
     const stopTimer = useRef(null);
 
+    // Run-history capture. `currentRunRef` accumulates the in-flight run (start
+    // time, last activity, and each node's status) as the executor hooks fire;
+    // it's finalized into `runHistory` (kept in state only, last 5) when the run
+    // ends. `showHistory` toggles the slide-in panel.
+    const currentRunRef = useRef(null);
+    const [runHistory, setRunHistory] = useState([]);
+    const [showHistory, setShowHistory] = useState(false);
+
     const markRunning = useCallback(() => {
         setRunning(true);
         if (stopTimer.current) clearTimeout(stopTimer.current);
         stopTimer.current = setTimeout(() => setRunning(false), 3500);
     }, []);
 
-    const handleNodeStart = useCallback(() => markRunning(), [markRunning]);
+    const handleNodeStart = useCallback(
+        (node) => {
+            if (!currentRunRef.current) {
+                currentRunRef.current = { startedAt: Date.now(), lastAt: Date.now(), nodes: {}, error: false };
+            }
+            if (node?.id) currentRunRef.current.nodes[node.id] = 'running';
+            currentRunRef.current.lastAt = Date.now();
+            markRunning();
+        },
+        [markRunning],
+    );
 
     const handleNodeDone = useCallback((node) => {
+        if (currentRunRef.current && node?.id) {
+            currentRunRef.current.nodes[node.id] = 'done';
+            currentRunRef.current.lastAt = Date.now();
+        }
         const label = node?.data?.label ?? '';
         if (/complete|closed/i.test(label)) {
             fireConfetti();
@@ -577,6 +605,14 @@ function WorkflowEditor() {
         if (node?.data?.kind === 'output') {
             if (stopTimer.current) clearTimeout(stopTimer.current);
             setRunning(false);
+        }
+    }, []);
+
+    const handleNodeError = useCallback((node) => {
+        if (currentRunRef.current && node?.id) {
+            currentRunRef.current.nodes[node.id] = 'error';
+            currentRunRef.current.lastAt = Date.now();
+            currentRunRef.current.error = true;
         }
     }, []);
 
@@ -590,10 +626,14 @@ function WorkflowEditor() {
         const meta = (type && toastMetaByType[type]) || {};
         const fire = (notification) => ux.dispatch('toast', notification);
         return {
-            ...withToasts(base, meta, fire, { onNodeStart: handleNodeStart, onNodeDone: handleNodeDone }),
+            ...withToasts(base, meta, fire, {
+                onNodeStart: handleNodeStart,
+                onNodeDone: handleNodeDone,
+                onNodeError: handleNodeError,
+            }),
             ...ux.executors,
         };
-    }, [type, ux, handleNodeStart, handleNodeDone]);
+    }, [type, ux, handleNodeStart, handleNodeDone, handleNodeError]);
 
     const [graph, setGraph] = useState(template ?? blankGraph);
     const [name, setName] = useState(template?.name ?? '');
@@ -792,6 +832,31 @@ function WorkflowEditor() {
         setGraph(next);
         scheduleCommit(next);
     };
+
+    // Finalize a run into history when `running` falls back to false. We build a
+    // per-node result from the live graph: nodes the hooks reported (done/error,
+    // or a started-but-unreported node treated as done) and everything else
+    // skipped. Duration uses the last activity time so the run-off watchdog delay
+    // doesn't inflate it. Kept to the 5 most recent.
+    useEffect(() => {
+        if (running || !currentRunRef.current) return;
+        const run = currentRunRef.current;
+        currentRunRef.current = null;
+        const nodes = latestGraphRef.current.nodes.map((n) => {
+            let status = run.nodes[n.id] ?? 'skipped';
+            if (status === 'running') status = 'done';
+            return { id: n.id, label: n.data?.label ?? n.id, status };
+        });
+        const success = !run.error && !nodes.some((n) => n.status === 'error');
+        const entry = {
+            id: `run-${run.startedAt}`,
+            startedAt: run.startedAt,
+            durationSec: Math.max(0, (run.lastAt - run.startedAt) / 1000),
+            success,
+            nodes,
+        };
+        setRunHistory((h) => [entry, ...h].slice(0, 5));
+    }, [running]);
 
     // The editor box, so the "Drag to connect" hint can position itself against
     // the node's output port.
@@ -1128,6 +1193,20 @@ function WorkflowEditor() {
                                     <span className="hidden sm:inline">Import</span>
                                 </button>
                             </Tooltip>
+
+                            <span className="h-5 w-px bg-gray-300/70 dark:bg-gray-600/50" aria-hidden="true" />
+
+                            <Tooltip label="Run History" placement="bottom">
+                                <button
+                                    type="button"
+                                    onClick={() => setShowHistory((v) => !v)}
+                                    aria-pressed={showHistory}
+                                    className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium transition-colors hover:bg-black/5 dark:hover:bg-white/10 ${showHistory ? 'text-indigo-600 dark:text-indigo-400' : 'text-gray-700 dark:text-gray-200'}`}
+                                >
+                                    <History size={16} aria-hidden="true" />
+                                    <span className="hidden sm:inline">History</span>
+                                </button>
+                            </Tooltip>
                         </motion.div>
                         <Tooltip label="Browse your saved workflows" placement="bottom">
                             <NavButton onClick={() => guardedNavigate('/workflows-list')}>Saved Workflows</NavButton>
@@ -1240,6 +1319,14 @@ function WorkflowEditor() {
                     </div>
                 </main>
             </div>
+
+            {/* Slide-in run history (state-only; last 5 runs). */}
+            <RunHistoryPanel
+                open={showHistory}
+                runs={runHistory}
+                onClose={() => setShowHistory(false)}
+                onClear={() => setRunHistory([])}
+            />
 
             {/* Warn before leaving with unsaved changes (in-app navigation). */}
             <UnsavedChangesModal
