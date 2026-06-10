@@ -30,7 +30,7 @@ export default function SaveStatusIndicator({ state }) {
             ) : (
                 <Check size={13} aria-hidden="true" />
             )}
-            <span className="hidden sm:inline">{cfg.text}</span>
+            <span className="hidden md:inline">{cfg.text}</span>
         </div>
     );
 }

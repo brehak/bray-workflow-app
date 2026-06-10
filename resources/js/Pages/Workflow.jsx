@@ -4,7 +4,19 @@ import { useFlowRunnerUx } from '@particle-academy/fancy-flow/ux';
 import { Heading, Pillbox, Text, Toast, useToast } from '@particle-academy/react-fancy';
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Workflow as WorkflowIcon, ArrowLeft, Save, Download, Upload, Undo2, Redo2, History } from 'lucide-react';
+import {
+    Workflow as WorkflowIcon,
+    ArrowLeft,
+    Save,
+    Download,
+    Upload,
+    Undo2,
+    Redo2,
+    History,
+    Home,
+    FolderOpen,
+    Tags as TagsIcon,
+} from 'lucide-react';
 import confetti from 'canvas-confetti';
 import GradientDivider from '../Components/GradientDivider';
 import ConnectHint from '../Components/ConnectHint';
@@ -12,6 +24,7 @@ import DescriptionField from '../Components/DescriptionField';
 import Logo from '../Components/Logo';
 import NavButton from '../Components/NavButton';
 import NodeConfigPanel from '../Components/NodeConfigPanel';
+import PaletteRelabel from '../Components/PaletteRelabel';
 import RunFeedPanel from '../Components/RunFeedPanel';
 import RunHistoryPanel from '../Components/RunHistoryPanel';
 import SaveStatusIndicator from '../Components/SaveStatusIndicator';
@@ -19,6 +32,7 @@ import ShortcutsModal from '../Components/ShortcutsModal';
 import UnsavedChangesModal from '../Components/UnsavedChangesModal';
 import ThemeToggle from '../Components/ThemeToggle';
 import Tooltip from '../Components/Tooltip';
+import { applyFriendlyNodeLabels } from '../lib/friendlyPalette';
 import '../../css/flow-animations.css';
 
 const templates = {
@@ -1224,6 +1238,270 @@ const returnRefundExecutors = {
     },
 };
 
+// ── The Return Journey ────────────────────────────────────────────────────
+// A long, branching story about Sarah Mitchell's smartwatch return. The runner
+// follows a single path per run (each decision returns a `branch`); the values
+// below trace the headline story — in window → manufacturing defect → full
+// refund + apology voucher → replacement shipped — while every other branch is
+// still given rich, realistic data so any path a user runs reads convincingly.
+const returnJourneyExecutors = {
+    'submit-return': async ({ node, emit }) => {
+        const returnRequest = {
+            id: rid('RMA-', 5),
+            customer: 'Sarah Mitchell',
+            email: 'sarah.mitchell@gmail.com',
+            orderNumber: '#4821',
+            item: 'Aurora Smartwatch Series 5',
+            price: 329.99,
+            purchaseDate: '2026-05-28',
+            submittedAt: '2026-06-08',
+            reason: 'Screen flickering intermittently',
+        };
+        say(
+            emit,
+            node,
+            'info',
+            `Return request received from Sarah — ${returnRequest.id}, order ${returnRequest.orderNumber}, "${returnRequest.item}" ($${returnRequest.price})`,
+        );
+        return { returnRequest };
+    },
+    'within-30-days': ({ node, inputs, emit }) => {
+        const { returnRequest } = inputs.in;
+        const daysSince = 11; // 2026-05-28 → 2026-06-08
+        const inWindow = daysSince <= 30;
+        const windowCheck = { daysSince, limit: 30, inWindow };
+        say(
+            emit,
+            node,
+            inWindow ? 'info' : 'warn',
+            inWindow
+                ? `Submitted ${daysSince} days after purchase — within the 30-day return window`
+                : `Submitted ${daysSince} days after purchase — outside the 30-day window`,
+        );
+        return { branch: inWindow ? 'true' : 'false', value: { ...inputs.in, windowCheck } };
+    },
+    'verify-purchase': async ({ node, inputs, emit }) => {
+        await wait(600);
+        const { returnRequest } = inputs.in;
+        const purchase = {
+            verified: true,
+            orderNumber: returnRequest.orderNumber,
+            purchaseDate: returnRequest.purchaseDate,
+            channel: 'Online Store',
+            paymentMethod: 'Visa ****7732',
+            price: returnRequest.price,
+            warrantyActive: true,
+        };
+        say(
+            emit,
+            node,
+            'info',
+            `Purchase verified — order ${purchase.orderNumber}, $${purchase.price} on ${purchase.paymentMethod} (warranty active)`,
+        );
+        return { ...inputs.in, purchase };
+    },
+    'item-damaged': ({ node, inputs, emit }) => {
+        // Inspection concludes a manufacturing defect — NOT customer-caused — so
+        // the story flows down the "full refund + apology voucher" branch.
+        const damageAssessment = {
+            inspector: 'Returns Lab',
+            findings: 'Display ribbon cable fault — factory defect',
+            faultParty: 'manufacturer',
+            customerFault: false,
+            photosReviewed: 3,
+        };
+        say(
+            emit,
+            node,
+            'info',
+            `Damage assessed: manufacturing defect found — ${damageAssessment.findings.toLowerCase()} (not customer-caused)`,
+        );
+        // `true` = damaged by customer · `false` = manufacturing defect.
+        return { branch: damageAssessment.customerFault ? 'true' : 'false', value: { ...inputs.in, damageAssessment } };
+    },
+    'full-refund-voucher': async ({ node, inputs, emit }) => {
+        await wait(650);
+        const { returnRequest } = inputs.in;
+        const refund = { amount: returnRequest.price, method: 'Visa ****7732', transactionId: rid('RFND-', 8) };
+        const voucher = { code: rid('SORRY-', 6), value: 25, currency: 'USD', expires: '2026-12-31' };
+        say(
+            emit,
+            node,
+            'info',
+            `Full refund of $${refund.amount} approved + apology voucher generated — ${voucher.code} ($${voucher.value})`,
+        );
+        return { ...inputs.in, refund, voucher };
+    },
+    'send-replacement': ({ node, inputs, emit }) => {
+        // The defective unit is in stock, so we ship a replacement.
+        const replacementCheck = { inStock: true, warehouse: 'WH-EAST', model: 'Aurora Smartwatch Series 5' };
+        say(
+            emit,
+            node,
+            'info',
+            `Replacement in stock at ${replacementCheck.warehouse} — shipping a new unit to Sarah`,
+        );
+        return { branch: replacementCheck.inStock ? 'true' : 'false', value: { ...inputs.in, replacementCheck } };
+    },
+    'ship-replacement': async ({ node, inputs, emit }) => {
+        await wait(600);
+        const shipment = { carrier: 'FedEx 2Day', tracking: rid('FX', 12), eta: '2026-06-12', warehouse: 'WH-EAST' };
+        say(emit, node, 'info', `Replacement shipped via ${shipment.carrier} — tracking ${shipment.tracking}, ETA ${shipment.eta}`);
+        return { ...inputs.in, shipment };
+    },
+    'replacement-sent': ({ node, inputs, emit }) => {
+        const { returnRequest, shipment, voucher } = inputs.in;
+        say(
+            emit,
+            node,
+            'info',
+            `✅ Replacement sent to ${returnRequest.customer} — order ${returnRequest.orderNumber} resolved, tracking ${shipment.tracking}, voucher ${voucher.code} included`,
+        );
+        return {
+            status: 'replacement-sent',
+            summary: { customer: returnRequest.customer, order: returnRequest.orderNumber, tracking: shipment.tracking, voucher: voucher.code },
+        };
+    },
+    'process-full-refund': async ({ node, inputs, emit }) => {
+        await wait(650);
+        const { returnRequest } = inputs.in;
+        const fullRefund = { amount: returnRequest.price, method: 'Visa ****7732', transactionId: rid('RFND-', 8), eta: '3-5 business days' };
+        say(emit, node, 'info', `Full refund of $${fullRefund.amount} processed — txn ${fullRefund.transactionId} (${fullRefund.eta})`);
+        return { ...inputs.in, fullRefund };
+    },
+    'refund-complete': ({ node, inputs, emit }) => {
+        const { returnRequest, fullRefund } = inputs.in;
+        say(emit, node, 'info', `✅ Refund complete — $${fullRefund.amount} returned to ${returnRequest.customer}`);
+        return { status: 'refunded', summary: { customer: returnRequest.customer, amount: fullRefund.amount, txn: fullRefund.transactionId } };
+    },
+    'partial-refund-offer': async ({ node, inputs, emit }) => {
+        await wait(600);
+        const { returnRequest } = inputs.in;
+        const partialOffer = { percent: 50, amount: +(returnRequest.price * 0.5).toFixed(2), reason: 'Customer-caused damage — partial restocking offer' };
+        say(emit, node, 'warn', `Partial refund offer extended — ${partialOffer.percent}% ($${partialOffer.amount}) due to customer-caused damage`);
+        return { ...inputs.in, partialOffer };
+    },
+    'customer-accepts': ({ node, inputs, emit }) => {
+        // Sarah accepts the partial offer in this branch.
+        const accepted = true;
+        say(
+            emit,
+            node,
+            accepted ? 'info' : 'warn',
+            accepted ? `Customer accepted the partial refund offer` : `Customer declined — escalating to a manager`,
+        );
+        return { branch: accepted ? 'true' : 'false', value: { ...inputs.in, offerAccepted: accepted } };
+    },
+    'process-partial-refund': async ({ node, inputs, emit }) => {
+        await wait(600);
+        const { partialOffer } = inputs.in;
+        const partialRefund = { amount: partialOffer.amount, method: 'Visa ****7732', transactionId: rid('RFND-', 8) };
+        say(emit, node, 'info', `Partial refund of $${partialRefund.amount} processed — txn ${partialRefund.transactionId}`);
+        return { ...inputs.in, partialRefund };
+    },
+    'case-closed-partial': ({ node, inputs, emit }) => {
+        const { returnRequest, partialRefund } = inputs.in;
+        say(emit, node, 'info', `✅ Case closed — $${partialRefund.amount} partial refund issued to ${returnRequest.customer}`);
+        return { status: 'closed', summary: { customer: returnRequest.customer, amount: partialRefund.amount, outcome: 'partial-refund' } };
+    },
+    'escalate-manager': async ({ node, inputs, emit }) => {
+        await wait(550);
+        const escalation = { manager: 'Diane Okafor', queue: 'Tier-2 Returns', ticket: rid('ESC-', 6) };
+        say(emit, node, 'info', `Escalated to manager ${escalation.manager} — ${escalation.queue}, ticket ${escalation.ticket}`);
+        return { ...inputs.in, escalation };
+    },
+    'manager-decision': ({ node, inputs, emit }) => {
+        const { escalation } = inputs.in;
+        // The manager approves a full refund as a goodwill gesture.
+        const approved = true;
+        say(
+            emit,
+            node,
+            approved ? 'info' : 'warn',
+            approved
+                ? `Manager ${escalation.manager} approved a full refund as a goodwill gesture`
+                : `Manager ${escalation.manager} upheld the customer-damage assessment`,
+        );
+        return { branch: approved ? 'true' : 'false', value: { ...inputs.in, managerApproved: approved } };
+    },
+    'full-refund-issued': ({ node, inputs, emit }) => {
+        const { returnRequest, escalation } = inputs.in;
+        say(emit, node, 'info', `✅ Full refund issued — $${returnRequest.price} approved via manager override by ${escalation.manager}`);
+        return { status: 'refunded', summary: { customer: returnRequest.customer, amount: returnRequest.price, approver: escalation.manager } };
+    },
+    'final-denial': ({ node, inputs, emit }) => {
+        const { returnRequest, escalation } = inputs.in;
+        say(emit, node, 'warn', `✗ Refund denied — ${escalation.manager} upheld the customer-damage assessment, ${returnRequest.customer} notified`);
+        return { status: 'denied', summary: { customer: returnRequest.customer, reason: 'customer-caused damage', reviewedBy: escalation.manager } };
+    },
+    'is-vip': ({ node, inputs, emit }) => {
+        // Outside the return window — but Sarah is a Platinum VIP, so she's
+        // eligible for a policy exception.
+        const vipStatus = { isVip: true, tier: 'Platinum', memberSince: '2021', lifetimeValue: 8450 };
+        say(
+            emit,
+            node,
+            vipStatus.isVip ? 'info' : 'info',
+            vipStatus.isVip
+                ? `Customer is a VIP (${vipStatus.tier} tier, since ${vipStatus.memberSince}) — eligible for a policy exception`
+                : `Standard customer — applying normal return policy`,
+        );
+        return { branch: vipStatus.isVip ? 'true' : 'false', value: { ...inputs.in, vipStatus } };
+    },
+    'exception-approval': async ({ node, inputs, emit }) => {
+        await wait(550);
+        const exception = { approvedBy: 'Retention Team', policy: 'VIP goodwill exception', reference: rid('EXC-', 6) };
+        say(emit, node, 'info', `Exception approval granted by ${exception.approvedBy} — ${exception.policy} (${exception.reference})`);
+        return { ...inputs.in, exception };
+    },
+    'manager-override': async ({ node, inputs, emit }) => {
+        await wait(600);
+        const { vipStatus } = inputs.in;
+        const override = { manager: 'Marcus Webb', note: `Approved outside the 30-day window for ${vipStatus.tier} member` };
+        say(emit, node, 'info', `Manager ${override.manager} overrode the 30-day limit for Sarah (${vipStatus.tier})`);
+        return { ...inputs.in, override };
+    },
+    'vip-refund-approved': ({ node, inputs, emit }) => {
+        const { returnRequest, override } = inputs.in;
+        say(emit, node, 'info', `✅ VIP refund approved — $${returnRequest.price} refunded to ${returnRequest.customer}, override by ${override.manager}`);
+        return { status: 'refunded', summary: { customer: returnRequest.customer, amount: returnRequest.price, approver: override.manager, tier: 'Platinum' } };
+    },
+    'send-policy-email': async ({ node, inputs, emit }) => {
+        await wait(500);
+        const { returnRequest } = inputs.in;
+        const policyEmail = { template: 'return-policy-v2', to: returnRequest.email, sentAt: new Date().toISOString() };
+        say(emit, node, 'info', `Policy email sent to ${policyEmail.to} — return falls outside the 30-day window`);
+        return { ...inputs.in, policyEmail };
+    },
+    'customer-disputes': ({ node, inputs, emit }) => {
+        // The customer pushes back on the policy decision.
+        const disputed = true;
+        say(
+            emit,
+            node,
+            disputed ? 'warn' : 'info',
+            disputed ? `Customer disputed the policy decision — escalating to support` : `Customer accepted the policy decision`,
+        );
+        return { branch: disputed ? 'true' : 'false', value: { ...inputs.in, disputed } };
+    },
+    'escalate-support': async ({ node, inputs, emit }) => {
+        await wait(600);
+        const supportCase = { agent: 'Nina Alvarez', channel: 'Live Chat', caseId: rid('SUP-', 6) };
+        say(emit, node, 'info', `Escalated to support — agent ${supportCase.agent} handling case ${supportCase.caseId} via ${supportCase.channel}`);
+        return { ...inputs.in, supportCase };
+    },
+    'resolved': ({ node, inputs, emit }) => {
+        const { returnRequest, supportCase } = inputs.in;
+        say(emit, node, 'info', `✅ Resolved — ${supportCase.agent} reached a goodwill resolution with ${returnRequest.customer}`);
+        return { status: 'resolved', summary: { customer: returnRequest.customer, caseId: supportCase.caseId, agent: supportCase.agent } };
+    },
+    'case-closed-policy': ({ node, inputs, emit }) => {
+        const { returnRequest } = inputs.in;
+        say(emit, node, 'info', `✅ Case closed — ${returnRequest.customer} accepted the policy decision`);
+        return { status: 'closed', summary: { customer: returnRequest.customer, outcome: 'policy-upheld' } };
+    },
+};
+
 // Each template's per-node executors layered over the generic kind-based
 // fallbacks, selected by the `type` URL parameter at render time.
 const executorsByType = {
@@ -1237,6 +1515,33 @@ const executorsByType = {
     productrecall: { ...genericExecutors, ...productRecallExecutors },
     eventplanning: { ...genericExecutors, ...eventPlanningExecutors },
     returnrefund: { ...genericExecutors, ...returnRefundExecutors },
+    returnjourney: { ...genericExecutors, ...returnJourneyExecutors },
+};
+
+// The kind-based fallbacks shared by every registry — excluded when figuring out
+// which template-specific nodes a saved graph contains.
+const GENERIC_EXECUTOR_KEYS = new Set(Object.keys(genericExecutors));
+
+// Recognize which template a saved graph originally came from by matching the
+// template-specific executor node ids against the graph's node ids. Returns the
+// best-matching type key (the one whose specific nodes are *all* present), or
+// null. This is what lets a workflow saved from a template — including
+// "The Return Journey" — still run its rich, story-driven executors, toasts and
+// accent when later opened by id (where there's no `?type=` in the URL).
+const detectTemplateType = (nodes) => {
+    const ids = new Set((nodes ?? []).map((n) => n.id));
+    let best = null;
+    let bestSize = 0;
+    for (const [type, registry] of Object.entries(executorsByType)) {
+        const specific = Object.keys(registry).filter((k) => !GENERIC_EXECUTOR_KEYS.has(k));
+        if (specific.length === 0) continue;
+        // Require a full match so an edited/unrelated graph falls back to generic.
+        if (specific.every((k) => ids.has(k)) && specific.length > bestSize) {
+            best = type;
+            bestSize = specific.length;
+        }
+    }
+    return best;
 };
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -1326,6 +1631,27 @@ const toastMetaByType = {
         'deny-refund': (r) => ({ title: 'Refund Denied', description: `${r.summary.customer} — request not approved`, variant: 'error' }),
         'notify-customer': (r) => ({ title: 'Customer Notified', description: `${r.notification.channel} · refund confirmed`, variant: 'info' }),
         'case-closed': (r) => ({ title: 'Case Closed', description: `${r.summary.id} · $${r.summary.amount} refunded`, variant: 'success' }),
+    },
+    returnjourney: {
+        'verify-purchase': (r) => ({ title: 'Purchase Verified', description: `Order ${r.purchase.orderNumber} · $${r.purchase.price}`, variant: 'info' }),
+        'full-refund-voucher': (r) => ({ title: 'Apology Voucher Generated', description: `${r.voucher.code} · $${r.voucher.value} off`, variant: 'success' }),
+        'ship-replacement': (r) => ({ title: 'Replacement Shipped', description: `${r.shipment.carrier} · ${r.shipment.tracking}`, variant: 'success' }),
+        'replacement-sent': (r) => ({ title: 'Replacement Sent', description: `${r.summary.customer} · order ${r.summary.order} resolved 🎉`, variant: 'success' }),
+        'process-full-refund': (r) => ({ title: 'Refund Processed', description: `$${r.fullRefund.amount} · ${r.fullRefund.transactionId}`, variant: 'success' }),
+        'refund-complete': (r) => ({ title: 'Refund Complete', description: `$${r.summary.amount} returned to ${r.summary.customer}`, variant: 'success' }),
+        'partial-refund-offer': (r) => ({ title: 'Partial Refund Offered', description: `${r.partialOffer.percent}% · $${r.partialOffer.amount}`, variant: 'warning' }),
+        'process-partial-refund': (r) => ({ title: 'Partial Refund Processed', description: `$${r.partialRefund.amount} · ${r.partialRefund.transactionId}`, variant: 'success' }),
+        'case-closed-partial': (r) => ({ title: 'Case Closed', description: `$${r.summary.amount} partial refund issued`, variant: 'success' }),
+        'escalate-manager': (r) => ({ title: 'Escalated to Manager', description: `${r.escalation.manager} · ${r.escalation.ticket}`, variant: 'warning' }),
+        'full-refund-issued': (r) => ({ title: 'Full Refund Issued', description: `$${r.summary.amount} · approved by ${r.summary.approver}`, variant: 'success' }),
+        'final-denial': (r) => ({ title: 'Refund Denied', description: `${r.summary.customer} — ${r.summary.reason}`, variant: 'error' }),
+        'exception-approval': (r) => ({ title: 'Exception Approved', description: `${r.exception.approvedBy} · ${r.exception.reference}`, variant: 'info' }),
+        'manager-override': (r) => ({ title: 'Manager Override', description: `${r.override.manager} cleared the window`, variant: 'warning' }),
+        'vip-refund-approved': (r) => ({ title: 'VIP Refund Approved', description: `$${r.summary.amount} · ${r.summary.tier} member`, variant: 'success' }),
+        'send-policy-email': (r) => ({ title: 'Policy Email Sent', description: `To ${r.policyEmail.to}`, variant: 'info' }),
+        'escalate-support': (r) => ({ title: 'Escalated to Support', description: `${r.supportCase.agent} · ${r.supportCase.caseId}`, variant: 'warning' }),
+        resolved: (r) => ({ title: 'Resolved', description: `${r.summary.agent} closed case ${r.summary.caseId}`, variant: 'success' }),
+        'case-closed-policy': (r) => ({ title: 'Case Closed', description: `${r.summary.customer} accepted the decision`, variant: 'info' }),
     },
 };
 
@@ -1441,6 +1767,13 @@ const accentThemes = {
         button: 'violet',
         text: 'text-violet-600 dark:text-violet-400',
     },
+    returnjourney: {
+        label: 'The Return Journey',
+        bar: 'bg-orange-500',
+        badge: 'bg-orange-100 text-orange-700 ring-orange-200 dark:bg-orange-500/15 dark:text-orange-300 dark:ring-orange-500/30',
+        button: 'orange',
+        text: 'text-orange-600 dark:text-orange-400',
+    },
 };
 
 const neutralAccent = {
@@ -1460,7 +1793,6 @@ function WorkflowEditor() {
     const savedId = params.get('id');
 
     const template = type && templates[type] ? templates[type] : null;
-    const accent = (type && accentThemes[type]) || neutralAccent;
 
     const { toast } = useToast();
 
@@ -1478,9 +1810,12 @@ function WorkflowEditor() {
     });
 
     // Register the `ux_toast` palette node once so it can be dragged onto the
-    // canvas. `registerKinds` is idempotent.
+    // canvas. `registerKinds` is idempotent. We also swap the built-in palette
+    // nodes' technical names for friendly ones (preserving their underlying
+    // types) — see lib/friendlyPalette.
     useEffect(() => {
         ux.registerKinds();
+        applyFriendlyNodeLabels();
     }, [ux]);
 
     // `running` drives the edge-flow animation (the canvas wrapper gets the
@@ -1499,6 +1834,8 @@ function WorkflowEditor() {
     const [runHistory, setRunHistory] = useState([]);
     const [showHistory, setShowHistory] = useState(false);
     const [showShortcuts, setShowShortcuts] = useState(false);
+    // On small screens the tags input collapses behind an icon button.
+    const [tagsOpen, setTagsOpen] = useState(false);
 
     // Our own run feed. The editor's built-in feed is hidden (showFeed={false})
     // so we can give it collapse/clear controls. We capture the executors' log
@@ -1565,12 +1902,21 @@ function WorkflowEditor() {
 
     useEffect(() => () => stopTimer.current && clearTimeout(stopTimer.current), []);
 
+    // For a workflow opened by id (a saved workflow, no `?type=`), `detectedType`
+    // is the template it was recognized as during the DB load below — so its
+    // rich executors/toasts/accent still apply. null for new/blank workflows and
+    // unrecognized graphs. `effectiveType` is whichever applies: the explicit URL
+    // type (templates) or the detected one (saved workflows).
+    const [detectedType, setDetectedType] = useState(null);
+    const effectiveType = type ?? detectedType;
+    const accent = (effectiveType && accentThemes[effectiveType]) || neutralAccent;
+
     // Template executors, each wrapped to fire its toast as it finishes, merged
     // with the UX effect executors (`ux_toast`) so hand-placed effect nodes run
     // too. Memoized so the registry keeps a stable identity across renders.
     const executors = useMemo(() => {
-        const base = (type && executorsByType[type]) || genericExecutors;
-        const meta = (type && toastMetaByType[type]) || {};
+        const base = (effectiveType && executorsByType[effectiveType]) || genericExecutors;
+        const meta = (effectiveType && toastMetaByType[effectiveType]) || {};
         const fire = (notification) => ux.dispatch('toast', notification);
         return {
             ...withToasts(base, meta, fire, {
@@ -1581,7 +1927,7 @@ function WorkflowEditor() {
             }),
             ...ux.executors,
         };
-    }, [type, ux, handleNodeStart, handleNodeDone, handleNodeError, handleLog]);
+    }, [effectiveType, ux, handleNodeStart, handleNodeDone, handleNodeError, handleLog]);
 
     const [graph, setGraph] = useState(template ?? blankGraph);
     const [name, setName] = useState(template?.name ?? '');
@@ -1639,6 +1985,8 @@ function WorkflowEditor() {
                 if (ignore) return;
                 const loaded = { nodes: data.nodes, edges: data.edges };
                 setGraph(loaded);
+                // Recognize a saved-from-template graph so its rich run still works.
+                setDetectedType(detectTemplateType(data.nodes));
                 resetHistory(loaded); // start a fresh undo history at the loaded state
                 setName(data.name);
                 setDescription(data.description ?? '');
@@ -2036,6 +2384,26 @@ function WorkflowEditor() {
         return () => window.removeEventListener('beforeunload', handler);
     }, [hasUnsavedWork]);
 
+    // Tags editor (Pillbox + quick-pick chips). Defined once and placed in both
+    // the lg brand column and the md/sm bottom row.
+    const tagsEditor = (
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+            <Pillbox value={tags} onChange={setTags} placeholder="Add tags…" className="min-w-44 py-1 text-sm sm:min-w-56" />
+            <div className="hidden flex-wrap items-center gap-1.5 sm:flex">
+                {SUGGESTED_TAGS.filter((t) => !tags.includes(t)).map((t) => (
+                    <button
+                        key={t}
+                        type="button"
+                        onClick={() => addTag(t)}
+                        className="rounded-full border border-dashed border-gray-300 px-2.5 py-0.5 text-xs font-medium text-gray-500 transition-colors hover:border-gray-400 hover:bg-gray-100 dark:border-gray-700 dark:text-gray-400 dark:hover:bg-gray-800"
+                    >
+                        + {t}
+                    </button>
+                ))}
+            </div>
+        </div>
+    );
+
     return (
         <>
             <Head title={name || 'New Workflow'} />
@@ -2044,162 +2412,194 @@ function WorkflowEditor() {
                 {/* Accent banner showing which template is active. transition-colors
                     so the bar eases between accents when switching templates. */}
                 <div className={`h-1.5 w-full transition-colors duration-200 ${accent.bar}`} />
-                <header className="sticky top-0 z-50 flex items-center justify-between gap-4 border-b border-gray-200/60 bg-white/70 px-6 py-4 backdrop-blur-md transition-colors duration-300 dark:border-gray-800/60 dark:bg-gray-900/70">
-                    <div className="flex items-center gap-3">
-                        <Logo className="shrink-0 text-indigo-600 dark:text-indigo-400" />
-                        <div className="flex flex-col gap-1">
-                        <motion.span
-                            initial={{ opacity: 0, y: -4 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            transition={{ duration: 0.4, ease: 'easeOut' }}
-                            className={`inline-flex w-fit items-center rounded-full px-2.5 py-0.5 text-xs font-medium ring-1 ring-inset ${accent.badge}`}
-                        >
-                            {accent.label}
-                        </motion.span>
-                        <input
-                            type="text"
-                            value={name}
-                            onChange={(e) => setName(e.target.value)}
-                            placeholder="Workflow name..."
-                            className="text-xl font-semibold bg-transparent border-none outline-none text-gray-900 dark:text-white placeholder-gray-400 w-full min-w-96"                        />
-                        {/* Inline-editable description: truncated line → click to expand
-                            into a compact (max 3-line) textarea. Same `description`
-                            state, so Save behaves exactly as before. */}
-                        <DescriptionField value={description} onChange={setDescription} />
-
-                        {/* Tags: type + Enter to add (removable via the pill X),
-                            with quick picks for common tags. */}
-                        <div className="mt-2 flex flex-wrap items-center gap-2">
-                            <Pillbox
-                                value={tags}
-                                onChange={setTags}
-                                placeholder="Add tags…"
-                                className="min-w-56 py-1 text-sm"
-                            />
-                            <div className="flex flex-wrap items-center gap-1.5">
-                                {SUGGESTED_TAGS.filter((t) => !tags.includes(t)).map((t) => (
-                                    <button
-                                        key={t}
-                                        type="button"
-                                        onClick={() => addTag(t)}
-                                        className="rounded-full border border-dashed border-gray-300 px-2.5 py-0.5 text-xs font-medium text-gray-500 transition-colors hover:border-gray-400 hover:bg-gray-100 dark:border-gray-700 dark:text-gray-400 dark:hover:bg-gray-800"
-                                    >
-                                        + {t}
-                                    </button>
-                                ))}
+                {/* Responsive header: one row on lg, two stacked rows on md and below.
+                    Top row = brand + nav; bottom row = tags + status + actions. Tags
+                    and nav are placed twice (CSS-toggled per breakpoint); the heavy
+                    action toolbar is a single instance shared by all layouts. */}
+                <header className="sticky top-0 z-50 flex flex-col gap-2 border-b border-gray-200/60 bg-white/70 px-4 py-3 backdrop-blur-md transition-colors duration-300 dark:border-gray-800/60 dark:bg-gray-900/70 lg:flex-row lg:items-center lg:justify-between lg:gap-3 lg:px-6 lg:py-4">
+                    {/* ── Row 1 (on lg: the left side) ─────────────────────────── */}
+                    <div className="flex min-w-0 items-center justify-between gap-2 lg:flex-1 lg:justify-start lg:gap-3">
+                        {/* Brand: logo + name + description (md+) + tags (lg) */}
+                        <div className="flex min-w-0 items-center gap-2 lg:items-start lg:gap-3">
+                            <Logo className="shrink-0 text-indigo-600 dark:text-indigo-400" />
+                            <div className="flex min-w-0 flex-col gap-0.5 lg:gap-1">
+                                <motion.span
+                                    initial={{ opacity: 0, y: -4 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    transition={{ duration: 0.4, ease: 'easeOut' }}
+                                    className={`inline-flex w-fit items-center rounded-full px-2 py-0.5 text-[11px] font-medium ring-1 ring-inset lg:px-2.5 lg:text-xs ${accent.badge}`}
+                                >
+                                    {accent.label}
+                                </motion.span>
+                                <input
+                                    type="text"
+                                    value={name}
+                                    onChange={(e) => setName(e.target.value)}
+                                    placeholder="Workflow name..."
+                                    className="w-full min-w-0 border-none bg-transparent text-base font-semibold text-gray-900 outline-none placeholder-gray-400 dark:text-white lg:min-w-96 lg:text-xl"
+                                />
+                                {/* Inline-editable description — hidden on small screens, shown md+. */}
+                                <div className="hidden md:block">
+                                    <DescriptionField value={description} onChange={setDescription} />
+                                </div>
+                                {/* Tags under the brand — lg only (md/sm show them in row 2). */}
+                                <div className="mt-1 hidden lg:block">{tagsEditor}</div>
                             </div>
                         </div>
+
+                        {/* Nav cluster for md/sm (top-right, icon-only). lg uses row 2. */}
+                        <div className="flex shrink-0 items-center gap-1 lg:hidden">
+                            <Tooltip label="Toggle light / dark mode" placement="bottom">
+                                <ThemeToggle />
+                            </Tooltip>
+                            <Tooltip label="Browse your saved workflows" placement="bottom">
+                                <button
+                                    type="button"
+                                    onClick={() => guardedNavigate('/workflows-list')}
+                                    aria-label="Saved Workflows"
+                                    className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-gray-200 bg-gray-100/80 text-gray-700 transition-colors hover:bg-gray-200/80 dark:border-gray-700 dark:bg-gray-800/80 dark:text-gray-200 dark:hover:bg-gray-700/80"
+                                >
+                                    <FolderOpen size={16} aria-hidden="true" />
+                                </button>
+                            </Tooltip>
+                            <Tooltip label="Back to home" placement="bottom">
+                                <button
+                                    type="button"
+                                    onClick={() => guardedNavigate('/')}
+                                    aria-label="Back home"
+                                    className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-gray-200 bg-gray-100/80 text-gray-700 transition-colors hover:bg-gray-200/80 dark:border-gray-700 dark:bg-gray-800/80 dark:text-gray-200 dark:hover:bg-gray-700/80"
+                                >
+                                    <Home size={16} aria-hidden="true" />
+                                </button>
+                            </Tooltip>
                         </div>
                     </div>
 
-                    <div className="flex flex-col items-end gap-1.5">
-                        {/* Top row: action toolbar + nav buttons. */}
-                        <div className="flex items-center gap-3">
-                        {/* Floating glass toolbar: Undo · Redo · Save · Export · Import */}
-                        <motion.div
-                            initial={{ opacity: 0, y: -8, scale: 0.98 }}
-                            animate={{ opacity: 1, y: 0, scale: 1 }}
-                            transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
-                            className="inline-flex items-center gap-1 rounded-full border border-white/40 bg-white/60 p-1 shadow-lg shadow-gray-900/5 backdrop-blur-md dark:border-white/10 dark:bg-gray-900/50 dark:shadow-black/20"
-                        >
-                            <Tooltip label="Undo (⌘Z)" placement="bottom">
+                    {/* ── Row 2 (on lg: the right side) ────────────────────────── */}
+                    <div className="flex min-w-0 items-center justify-between gap-2 lg:flex-none lg:justify-end lg:gap-3">
+                        {/* Tags for md/sm — collapse behind an icon below md. lg uses row 1. */}
+                        <div className="flex min-w-0 items-center gap-2 lg:hidden">
+                            <Tooltip label="Tags" placement="bottom">
                                 <button
                                     type="button"
-                                    onClick={undo}
-                                    disabled={!canUndo}
-                                    aria-label="Undo"
-                                    className="inline-flex items-center rounded-full p-2 text-gray-700 transition-colors hover:bg-black/5 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent dark:text-gray-200 dark:hover:bg-white/10 dark:disabled:hover:bg-transparent"
+                                    onClick={() => setTagsOpen((o) => !o)}
+                                    aria-label="Tags"
+                                    aria-expanded={tagsOpen}
+                                    className="relative inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-gray-200 bg-gray-100/80 text-gray-700 transition-colors hover:bg-gray-200/80 dark:border-gray-700 dark:bg-gray-800/80 dark:text-gray-200 dark:hover:bg-gray-700/80 md:hidden"
                                 >
-                                    <Undo2 size={16} aria-hidden="true" />
+                                    <TagsIcon size={16} aria-hidden="true" />
+                                    {tags.length > 0 && (
+                                        <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-indigo-600 px-1 text-[10px] font-semibold leading-none text-white">
+                                            {tags.length}
+                                        </span>
+                                    )}
                                 </button>
                             </Tooltip>
-
-                            <Tooltip label="Redo (⌘⇧Z)" placement="bottom">
-                                <button
-                                    type="button"
-                                    onClick={redo}
-                                    disabled={!canRedo}
-                                    aria-label="Redo"
-                                    className="inline-flex items-center rounded-full p-2 text-gray-700 transition-colors hover:bg-black/5 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent dark:text-gray-200 dark:hover:bg-white/10 dark:disabled:hover:bg-transparent"
-                                >
-                                    <Redo2 size={16} aria-hidden="true" />
-                                </button>
-                            </Tooltip>
-
-                            <span className="h-5 w-px bg-gray-300/70 dark:bg-gray-600/50" aria-hidden="true" />
-
-                            <Tooltip label="Save Workflow" placement="bottom">
-                                <button
-                                    type="button"
-                                    onClick={saveWorkflow}
-                                    className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-semibold transition-colors hover:bg-black/5 dark:hover:bg-white/10 ${accent.text}`}
-                                >
-                                    <Save size={16} aria-hidden="true" />
-                                    <span className="hidden sm:inline">Save</span>
-                                </button>
-                            </Tooltip>
-
-                            <span className="h-5 w-px bg-gray-300/70 dark:bg-gray-600/50" aria-hidden="true" />
-
-                            <Tooltip label="Export JSON" placement="bottom">
-                                <button
-                                    type="button"
-                                    onClick={exportJson}
-                                    className="inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium text-gray-700 transition-colors hover:bg-black/5 dark:text-gray-200 dark:hover:bg-white/10"
-                                >
-                                    <Download size={16} aria-hidden="true" />
-                                    <span className="hidden sm:inline">Export</span>
-                                </button>
-                            </Tooltip>
-
-                            <span className="h-5 w-px bg-gray-300/70 dark:bg-gray-600/50" aria-hidden="true" />
-
-                            <Tooltip label="Import JSON" placement="bottom">
-                                <button
-                                    type="button"
-                                    onClick={importJson}
-                                    className="inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium text-gray-700 transition-colors hover:bg-black/5 dark:text-gray-200 dark:hover:bg-white/10"
-                                >
-                                    <Upload size={16} aria-hidden="true" />
-                                    <span className="hidden sm:inline">Import</span>
-                                </button>
-                            </Tooltip>
-
-                            <span className="h-5 w-px bg-gray-300/70 dark:bg-gray-600/50" aria-hidden="true" />
-
-                            <Tooltip label="Run History" placement="bottom">
-                                <button
-                                    type="button"
-                                    onClick={() => setShowHistory((v) => !v)}
-                                    aria-pressed={showHistory}
-                                    className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium transition-colors hover:bg-black/5 dark:hover:bg-white/10 ${showHistory ? 'text-indigo-600 dark:text-indigo-400' : 'text-gray-700 dark:text-gray-200'}`}
-                                >
-                                    <History size={16} aria-hidden="true" />
-                                    <span className="hidden sm:inline">History</span>
-                                </button>
-                            </Tooltip>
-                        </motion.div>
-                        <Tooltip label="Browse your saved workflows" placement="bottom">
-                            <NavButton onClick={() => guardedNavigate('/workflows-list')}>Saved Workflows</NavButton>
-                        </Tooltip>
-                        <Tooltip label="Toggle light / dark mode" placement="bottom">
-                            <ThemeToggle />
-                        </Tooltip>
-                        <Tooltip label="Back to home" placement="bottom">
-                            <NavButton onClick={() => guardedNavigate('/')}>Back home</NavButton>
-                        </Tooltip>
+                            <div className={`min-w-0 md:block ${tagsOpen ? 'block' : 'hidden'}`}>{tagsEditor}</div>
                         </div>
 
-                        {/* Status messages — small, subtle, right-aligned, stacked
-                            below the buttons so they don't crowd the toolbar. */}
-                        {(graph.nodes.length > 0 || status) && (
-                            <div className="flex flex-col items-end gap-0.5 pr-1 text-right">
-                                {graph.nodes.length > 0 && <SaveStatusIndicator state={saveState} />}
-                                {status && (
-                                    <Text className="text-xs text-gray-400 dark:text-gray-500">{status}</Text>
-                                )}
+                        {/* Status indicator + action toolbar + nav (lg). */}
+                        <div className="flex shrink-0 items-center gap-2">
+                            {graph.nodes.length > 0 && <SaveStatusIndicator state={saveState} />}
+                            {status && (
+                                <Text className="hidden text-xs text-gray-400 dark:text-gray-500 md:inline">{status}</Text>
+                            )}
+
+                            {/* Floating glass toolbar: Undo · Redo · Save · Export · Import · History.
+                                Labels show only on lg; below lg they're icon-only (with tooltips). */}
+                            <motion.div
+                                initial={{ opacity: 0, y: -8, scale: 0.98 }}
+                                animate={{ opacity: 1, y: 0, scale: 1 }}
+                                transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
+                                className="inline-flex items-center gap-0.5 rounded-full border border-white/40 bg-white/60 p-1 shadow-lg shadow-gray-900/5 backdrop-blur-md dark:border-white/10 dark:bg-gray-900/50 dark:shadow-black/20 lg:gap-1"
+                            >
+                                <Tooltip label="Undo (⌘Z)" placement="bottom">
+                                    <button
+                                        type="button"
+                                        onClick={undo}
+                                        disabled={!canUndo}
+                                        aria-label="Undo"
+                                        className="inline-flex items-center rounded-full p-2 text-gray-700 transition-colors hover:bg-black/5 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent dark:text-gray-200 dark:hover:bg-white/10 dark:disabled:hover:bg-transparent"
+                                    >
+                                        <Undo2 size={16} aria-hidden="true" />
+                                    </button>
+                                </Tooltip>
+
+                                <Tooltip label="Redo (⌘⇧Z)" placement="bottom">
+                                    <button
+                                        type="button"
+                                        onClick={redo}
+                                        disabled={!canRedo}
+                                        aria-label="Redo"
+                                        className="inline-flex items-center rounded-full p-2 text-gray-700 transition-colors hover:bg-black/5 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent dark:text-gray-200 dark:hover:bg-white/10 dark:disabled:hover:bg-transparent"
+                                    >
+                                        <Redo2 size={16} aria-hidden="true" />
+                                    </button>
+                                </Tooltip>
+
+                                <span className="mx-0.5 h-5 w-px bg-gray-300/70 dark:bg-gray-600/50" aria-hidden="true" />
+
+                                <Tooltip label="Save Workflow" placement="bottom">
+                                    <button
+                                        type="button"
+                                        onClick={saveWorkflow}
+                                        className={`inline-flex items-center gap-2 rounded-full px-2 py-1.5 text-sm font-semibold transition-colors hover:bg-black/5 dark:hover:bg-white/10 lg:px-3 ${accent.text}`}
+                                    >
+                                        <Save size={16} aria-hidden="true" />
+                                        <span className="hidden lg:inline">Save</span>
+                                    </button>
+                                </Tooltip>
+
+                                <Tooltip label="Export JSON" placement="bottom">
+                                    <button
+                                        type="button"
+                                        onClick={exportJson}
+                                        className="inline-flex items-center gap-2 rounded-full px-2 py-1.5 text-sm font-medium text-gray-700 transition-colors hover:bg-black/5 dark:text-gray-200 dark:hover:bg-white/10 lg:px-3"
+                                    >
+                                        <Download size={16} aria-hidden="true" />
+                                        <span className="hidden lg:inline">Export</span>
+                                    </button>
+                                </Tooltip>
+
+                                <Tooltip label="Import JSON" placement="bottom">
+                                    <button
+                                        type="button"
+                                        onClick={importJson}
+                                        className="inline-flex items-center gap-2 rounded-full px-2 py-1.5 text-sm font-medium text-gray-700 transition-colors hover:bg-black/5 dark:text-gray-200 dark:hover:bg-white/10 lg:px-3"
+                                    >
+                                        <Upload size={16} aria-hidden="true" />
+                                        <span className="hidden lg:inline">Import</span>
+                                    </button>
+                                </Tooltip>
+
+                                <span className="mx-0.5 h-5 w-px bg-gray-300/70 dark:bg-gray-600/50" aria-hidden="true" />
+
+                                <Tooltip label="Run History" placement="bottom">
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowHistory((v) => !v)}
+                                        aria-pressed={showHistory}
+                                        className={`inline-flex items-center gap-2 rounded-full px-2 py-1.5 text-sm font-medium transition-colors hover:bg-black/5 dark:hover:bg-white/10 lg:px-3 ${showHistory ? 'text-indigo-600 dark:text-indigo-400' : 'text-gray-700 dark:text-gray-200'}`}
+                                    >
+                                        <History size={16} aria-hidden="true" />
+                                        <span className="hidden lg:inline">History</span>
+                                    </button>
+                                </Tooltip>
+                            </motion.div>
+
+                            {/* Nav for lg (text buttons). md/sm use the top-row icon cluster. */}
+                            <div className="hidden items-center gap-2 lg:flex">
+                                <Tooltip label="Browse your saved workflows" placement="bottom">
+                                    <NavButton onClick={() => guardedNavigate('/workflows-list')}>Saved Workflows</NavButton>
+                                </Tooltip>
+                                <Tooltip label="Toggle light / dark mode" placement="bottom">
+                                    <ThemeToggle />
+                                </Tooltip>
+                                <Tooltip label="Back to home" placement="bottom">
+                                    <NavButton onClick={() => guardedNavigate('/')}>Back home</NavButton>
+                                </Tooltip>
                             </div>
-                        )}
+                        </div>
                     </div>
                 </header>
 
@@ -2259,6 +2659,11 @@ function WorkflowEditor() {
                             </div>
                         )}
 
+                        {/* Renames the built-in palette's section headers to friendly
+                            language (the node names themselves are renamed via the
+                            re-registered kind labels). */}
+                        <PaletteRelabel containerRef={editorBoxRef} />
+
                         {/* Friendly empty state — shown on a blank canvas, fades out
                             once the first node is added. `pointer-events-none` keeps
                             drag-and-drop onto the canvas fully working. */}
@@ -2280,10 +2685,10 @@ function WorkflowEditor() {
                                             aria-hidden="true"
                                         />
                                         <h2 className="mt-6 text-2xl font-semibold text-gray-700 dark:text-gray-200">
-                                            Start building your workflow
+                                            Let's build something
                                         </h2>
                                         <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
-                                            Drag a step from the left panel to get started
+                                            Drag a step over from the left to begin
                                         </p>
 
                                         {/* Visual hint pointing toward the left node palette.

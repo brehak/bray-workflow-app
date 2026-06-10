@@ -46,7 +46,7 @@ export default function ShortcutsModal({ open, onClose }) {
                     >
                         <div className="mb-5 flex items-center justify-between">
                             <Heading as="h2" id="shortcuts-title" size="lg" weight="semibold">
-                                Keyboard Shortcuts
+                                Work faster with shortcuts
                             </Heading>
                             <Button variant="outline" color="gray" size="sm" onClick={onClose}>
                                 Close

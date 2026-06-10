@@ -179,11 +179,16 @@ export default function WorkflowList({ workflows }) {
             <div className="flex min-h-screen flex-col bg-gray-50 dark:bg-gray-950">
                 <header className="sticky top-0 z-50 border-b border-gray-200/60 bg-white/70 px-6 py-4 backdrop-blur-md transition-colors duration-300 dark:border-gray-800/60 dark:bg-gray-900/70">
                     <div className="mx-auto flex max-w-5xl items-center justify-between">
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2.5">
                             <Logo className="text-indigo-600 dark:text-indigo-400" />
-                            <Heading as="h2" size="xl" weight="semibold">
-                                Saved Workflows
-                            </Heading>
+                            <div className="flex flex-col">
+                                <Heading as="h2" size="xl" weight="semibold">
+                                    Your workspace
+                                </Heading>
+                                <Text className="hidden text-xs text-gray-500 dark:text-gray-400 sm:block">
+                                    Pick up where you left off, or start something new.
+                                </Text>
+                            </div>
                         </div>
                         <div className="flex items-center gap-3">
                             <ThemeToggle />
@@ -201,7 +206,7 @@ export default function WorkflowList({ workflows }) {
 
                     {/* Templates Section */}
                     <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
-                        Templates
+                        Start with a template
                     </p>
                     <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 mb-8">
                         {templates.map((template) => (
@@ -239,12 +244,12 @@ export default function WorkflowList({ workflows }) {
 
                     {/* Saved Workflows Section */}
                     <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
-                        Your Saved Workflows
+                        Workflows you've built
                     </p>
                     {workflows.length === 0 ? (
                         <div className="flex flex-col items-center justify-center py-12 text-center rounded-xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900">
-                            <Text className="text-gray-500">No workflows saved yet.</Text>
-                            <Text className="text-sm text-gray-400 mt-1">Launch a template and hit Save to get started.</Text>
+                            <Text className="text-gray-500">Nothing here yet.</Text>
+                            <Text className="text-sm text-gray-400 mt-1">Open a template, make it your own, and save it to see it here.</Text>
                         </div>
                     ) : (
                         <>

@@ -44,7 +44,7 @@ export default function Welcome() {
                         <motion.div initial="hidden" animate="visible" variants={stagger}>
                             <motion.div variants={fadeUp}>
                                 <span className="inline-block rounded-full border border-gray-200 bg-white px-4 py-1.5 text-xs font-medium text-gray-600 shadow-sm dark:border-gray-800 dark:bg-gray-900 dark:text-gray-400">
-                                    ✨ Visual workflow automation
+                                    ✨ Less busywork, more flow
                                 </span>
                             </motion.div>
 
@@ -52,9 +52,9 @@ export default function Welcome() {
                                 variants={fadeUp}
                                 className="mx-auto mt-6 max-w-4xl bg-gradient-to-br from-blue-600 via-indigo-600 to-purple-600 bg-clip-text text-5xl font-extrabold leading-[1.05] tracking-tight text-transparent dark:from-blue-400 dark:via-indigo-400 dark:to-purple-400 sm:mt-8 sm:text-6xl md:text-7xl lg:text-8xl"
                             >
-                                Automate anything.{' '}
+                                Build it once.{' '}
                                 <span className="relative inline-block">
-                                    Visually.
+                                    Run it forever.
                                     <motion.span
                                         aria-hidden="true"
                                         className="absolute -bottom-1 left-0 right-0 h-1 origin-left rounded-full bg-gradient-to-r from-blue-500 to-purple-500 sm:-bottom-2 sm:h-1.5"
@@ -67,9 +67,8 @@ export default function Welcome() {
 
                             <motion.div variants={fadeUp}>
                                 <Text className="mx-auto mt-6 max-w-2xl text-lg leading-relaxed text-gray-600 dark:text-gray-300 sm:mt-8 sm:text-xl">
-                                    Choose from 10 ready-made workflow templates or build your own from scratch — then
-                                    design, run, and watch your processes come to life on an interactive canvas. No code
-                                    required.
+                                    Map out how your work gets done, then let it run itself. Start from a template or
+                                    build your own — you'll be up and running in minutes.
                                 </Text>
                             </motion.div>
 
@@ -102,7 +101,7 @@ export default function Welcome() {
                             {/* Subtle hint nudging toward templates. */}
                             <motion.div variants={fadeUp}>
                                 <Text className="mt-5 text-sm text-gray-500 dark:text-gray-400">
-                                    Start from one of 10 ready-made templates or build your own from scratch.
+                                    New here? A template's the fastest way to get going.
                                 </Text>
                             </motion.div>
                         </motion.div>
