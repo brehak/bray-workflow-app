@@ -16,6 +16,7 @@ import {
     Home,
     FolderOpen,
     Tags as TagsIcon,
+    BookOpen,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import GradientDivider from '../Components/GradientDivider';
@@ -23,6 +24,7 @@ import ConnectHint from '../Components/ConnectHint';
 import DescriptionField from '../Components/DescriptionField';
 import Logo from '../Components/Logo';
 import NavButton from '../Components/NavButton';
+import BeginnerGuide from '../Components/BeginnerGuide';
 import NodeConfigPanel from '../Components/NodeConfigPanel';
 import PaletteRelabel from '../Components/PaletteRelabel';
 import RunFeedPanel from '../Components/RunFeedPanel';
@@ -300,6 +302,9 @@ const workflowFingerprint = (name, description, tags, nodes, edges) =>
 
 // Cap how many undo steps we retain.
 const MAX_HISTORY = 50;
+
+// localStorage flag controlling the first-run beginner's guide auto-popup.
+const GUIDE_SEEN_KEY = 'workflow-guide-seen';
 
 // ──────────────────────────────────────────────────────────────────────────
 // Executors
@@ -1834,8 +1839,39 @@ function WorkflowEditor() {
     const [runHistory, setRunHistory] = useState([]);
     const [showHistory, setShowHistory] = useState(false);
     const [showShortcuts, setShowShortcuts] = useState(false);
+    // Beginner's guide modal (opened from the header, or auto-shown the very
+    // first time someone opens a blank new workflow — see the effect below).
+    const [showGuide, setShowGuide] = useState(false);
     // On small screens the tags input collapses behind an icon button.
     const [tagsOpen, setTagsOpen] = useState(false);
+
+    // Auto-show the beginner's guide on a blank, brand-new workflow (no template,
+    // no saved id) until it's been seen/dismissed. The "seen" flag is written
+    // when the guide is closed (see closeGuide) rather than here, so a transient
+    // remount on first load can't set the flag and then suppress the very popup
+    // it was meant to trigger. Dismissing it once (the checkbox defaults to
+    // checked) stops it from auto-showing again.
+    useEffect(() => {
+        if (savedId || type) return; // only blank, new workflows
+        try {
+            if (localStorage.getItem(GUIDE_SEEN_KEY) !== '1') setShowGuide(true);
+        } catch {
+            // localStorage unavailable (private mode, etc.) — just skip auto-show.
+        }
+        // Mount-only: the URL params are fixed for this editor instance.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+    // Persist the guide's "Don't show this again" preference and close it.
+    const closeGuide = (dontShowAgain) => {
+        try {
+            if (dontShowAgain) localStorage.setItem(GUIDE_SEEN_KEY, '1');
+            else localStorage.removeItem(GUIDE_SEEN_KEY);
+        } catch {
+            // ignore storage failures
+        }
+        setShowGuide(false);
+    };
 
     // Our own run feed. The editor's built-in feed is hidden (showFeed={false})
     // so we can give it collapse/clear controls. We capture the executors' log
@@ -2585,6 +2621,19 @@ function WorkflowEditor() {
                                         <span className="hidden lg:inline">History</span>
                                     </button>
                                 </Tooltip>
+
+                                <span className="mx-0.5 h-5 w-px bg-gray-300/70 dark:bg-gray-600/50" aria-hidden="true" />
+
+                                <Tooltip label="Beginner's guide" placement="bottom">
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowGuide(true)}
+                                        className="inline-flex items-center gap-2 rounded-full px-2 py-1.5 text-sm font-medium text-gray-700 transition-colors hover:bg-black/5 dark:text-gray-200 dark:hover:bg-white/10 lg:px-3"
+                                    >
+                                        <BookOpen size={16} aria-hidden="true" />
+                                        <span className="hidden lg:inline">Guide</span>
+                                    </button>
+                                </Tooltip>
                             </motion.div>
 
                             {/* Nav for lg (text buttons). md/sm use the top-row icon cluster. */}
@@ -2756,6 +2805,9 @@ function WorkflowEditor() {
 
             {/* Keyboard shortcuts help modal. */}
             <ShortcutsModal open={showShortcuts} onClose={() => setShowShortcuts(false)} />
+
+            {/* Beginner's guide — multi-page onboarding tour. */}
+            <BeginnerGuide open={showGuide} onClose={closeGuide} />
 
             {/* Warn before leaving with unsaved changes (in-app navigation). */}
             <UnsavedChangesModal
