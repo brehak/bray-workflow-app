@@ -141,6 +141,27 @@
     fill: rgba(255, 255, 255, 0.06);
 }
 
+/* ── Canvas background preference (Settings → Editor Preferences) ───────────
+ * The editor box carries `data-canvas-bg="dots|plain|lines"`. "dots" is the
+ * default (the React Flow pattern above). "plain" hides the pattern entirely.
+ * "lines" hides the dots and paints a faint squared grid on the canvas surface
+ * (a static CSS grid — it doesn't pan with the viewport, but reads cleanly). */
+.workflow-editor[data-canvas-bg='plain'] .react-flow__background,
+.workflow-editor[data-canvas-bg='lines'] .react-flow__background {
+    display: none;
+}
+.workflow-editor[data-canvas-bg='lines'] .react-flow__pane {
+    background-image:
+        linear-gradient(to right, rgba(17, 24, 39, 0.06) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(17, 24, 39, 0.06) 1px, transparent 1px);
+    background-size: 22px 22px;
+}
+.dark .workflow-editor[data-canvas-bg='lines'] .react-flow__pane {
+    background-image:
+        linear-gradient(to right, rgba(255, 255, 255, 0.05) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+}
+
 /* Soft inset vignette to give the canvas a sense of depth. A non-interactive
    overlay (`pointer-events: none`) so it never blocks nodes, controls, or
    drag/drop; the border-radius matches the canvas so it follows the rounded

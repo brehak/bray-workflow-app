@@ -17,6 +17,7 @@ import {
     FolderOpen,
     Tags as TagsIcon,
     BookOpen,
+    Settings as SettingsIcon,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import GradientDivider from '../Components/GradientDivider';
@@ -35,6 +36,7 @@ import UnsavedChangesModal from '../Components/UnsavedChangesModal';
 import ThemeToggle from '../Components/ThemeToggle';
 import Tooltip from '../Components/Tooltip';
 import { applyFriendlyNodeLabels } from '../lib/friendlyPalette';
+import { getSettings, autoSaveIntervalMs } from '../lib/settings';
 import '../../css/flow-animations.css';
 
 const templates = {
@@ -1789,6 +1791,20 @@ const neutralAccent = {
     text: 'text-gray-700 dark:text-gray-200',
 };
 
+// Accent themes for the user's default-accent preference (Settings → Appearance),
+// applied to a brand-new/blank workflow. Same shape as the template accents above;
+// full literal class strings so Tailwind's scanner keeps them. Keeps the neutral
+// "New Workflow" label, just tinted in the chosen color.
+const SETTINGS_ACCENT_THEMES = {
+    indigo: { label: 'New Workflow', bar: 'bg-indigo-500', badge: 'bg-indigo-100 text-indigo-700 ring-indigo-200 dark:bg-indigo-500/15 dark:text-indigo-300 dark:ring-indigo-500/30', button: 'indigo', text: 'text-indigo-600 dark:text-indigo-400' },
+    blue: { label: 'New Workflow', bar: 'bg-blue-500', badge: 'bg-blue-100 text-blue-700 ring-blue-200 dark:bg-blue-500/15 dark:text-blue-300 dark:ring-blue-500/30', button: 'blue', text: 'text-blue-600 dark:text-blue-400' },
+    green: { label: 'New Workflow', bar: 'bg-green-500', badge: 'bg-green-100 text-green-700 ring-green-200 dark:bg-green-500/15 dark:text-green-300 dark:ring-green-500/30', button: 'green', text: 'text-green-600 dark:text-green-400' },
+    violet: { label: 'New Workflow', bar: 'bg-violet-500', badge: 'bg-violet-100 text-violet-700 ring-violet-200 dark:bg-violet-500/15 dark:text-violet-300 dark:ring-violet-500/30', button: 'violet', text: 'text-violet-600 dark:text-violet-400' },
+    orange: { label: 'New Workflow', bar: 'bg-orange-500', badge: 'bg-orange-100 text-orange-700 ring-orange-200 dark:bg-orange-500/15 dark:text-orange-300 dark:ring-orange-500/30', button: 'orange', text: 'text-orange-600 dark:text-orange-400' },
+    pink: { label: 'New Workflow', bar: 'bg-pink-500', badge: 'bg-pink-100 text-pink-700 ring-pink-200 dark:bg-pink-500/15 dark:text-pink-300 dark:ring-pink-500/30', button: 'pink', text: 'text-pink-600 dark:text-pink-400' },
+    teal: { label: 'New Workflow', bar: 'bg-teal-500', badge: 'bg-teal-100 text-teal-700 ring-teal-200 dark:bg-teal-500/15 dark:text-teal-300 dark:ring-teal-500/30', button: 'teal', text: 'text-teal-600 dark:text-teal-400' },
+};
+
 // Quick-pick tags surfaced next to the tags input.
 const SUGGESTED_TAGS = ['HR', 'Engineering', 'Finance', 'Operations', 'Design'];
 
@@ -1945,7 +1961,11 @@ function WorkflowEditor() {
     // type (templates) or the detected one (saved workflows).
     const [detectedType, setDetectedType] = useState(null);
     const effectiveType = type ?? detectedType;
-    const accent = (effectiveType && accentThemes[effectiveType]) || neutralAccent;
+    // User preferences (read once at mount). A brand-new/blank workflow uses the
+    // chosen default accent; templates/saved workflows keep their own accent.
+    const userSettings = useMemo(() => getSettings(), []);
+    const blankAccent = SETTINGS_ACCENT_THEMES[userSettings.accent] || neutralAccent;
+    const accent = (effectiveType && accentThemes[effectiveType]) || blankAccent;
 
     // Template executors, each wrapped to fire its toast as it finishes, merged
     // with the UX effect executors (`ux_toast`) so hand-placed effect nodes run
@@ -1965,10 +1985,14 @@ function WorkflowEditor() {
         };
     }, [effectiveType, ux, handleNodeStart, handleNodeDone, handleNodeError, handleLog]);
 
+    // A brand-new, blank workflow (no template, no saved id) seeds its name and
+    // tags from the user's Workflow Defaults; templates and saved workflows keep
+    // their own values.
+    const isBlankNew = !type && !savedId;
     const [graph, setGraph] = useState(template ?? blankGraph);
-    const [name, setName] = useState(template?.name ?? '');
+    const [name, setName] = useState(template?.name ?? (isBlankNew ? userSettings.defaultNamePrefix : ''));
     const [description, setDescription] = useState(template?.description ?? '');
-    const [tags, setTags] = useState(template?.tags ?? []);
+    const [tags, setTags] = useState(template?.tags ?? (isBlankNew ? userSettings.defaultTags : []));
     const [dbId, setDbId] = useState(null);
     const [status, setStatus] = useState(null);
 
@@ -2368,10 +2392,11 @@ function WorkflowEditor() {
         },
     };
 
-    // Auto-save: every 30s, save if there are unsaved changes and the workflow is
+    // Auto-save: on the user's chosen interval (Settings → Editor Preferences;
+    // default 30s, or off), save if there are unsaved changes and the workflow is
     // named with at least one node. Kept in a ref so the interval always runs the
     // latest closure without being torn down on every keystroke. The interval is
-    // keyed on `autoSaveTick` so a manual save resets the 30s clock.
+    // keyed on `autoSaveTick` so a manual save resets the clock.
     const autoSaveRef = useRef(null);
     autoSaveRef.current = () => {
         if (name.trim() && graph.nodes.length > 0 && hasUnsavedChanges && !savingRef.current) {
@@ -2379,9 +2404,11 @@ function WorkflowEditor() {
         }
     };
     useEffect(() => {
-        const id = setInterval(() => autoSaveRef.current?.(), 30000);
+        const ms = autoSaveIntervalMs(userSettings);
+        if (ms == null) return; // auto-save turned off
+        const id = setInterval(() => autoSaveRef.current?.(), ms);
         return () => clearInterval(id);
-    }, [autoSaveTick]);
+    }, [autoSaveTick, userSettings]);
 
     // ── Unsaved-changes navigation guard ───────────────────────────────────
     // Only guard when there's actual work to lose (≥1 node and unsaved).
@@ -2496,6 +2523,16 @@ function WorkflowEditor() {
                                     className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-gray-200 bg-gray-100/80 text-gray-700 transition-colors hover:bg-gray-200/80 dark:border-gray-700 dark:bg-gray-800/80 dark:text-gray-200 dark:hover:bg-gray-700/80"
                                 >
                                     <FolderOpen size={16} aria-hidden="true" />
+                                </button>
+                            </Tooltip>
+                            <Tooltip label="Settings" placement="bottom">
+                                <button
+                                    type="button"
+                                    onClick={() => guardedNavigate('/settings')}
+                                    aria-label="Settings"
+                                    className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-gray-200 bg-gray-100/80 text-gray-700 transition-colors hover:bg-gray-200/80 dark:border-gray-700 dark:bg-gray-800/80 dark:text-gray-200 dark:hover:bg-gray-700/80"
+                                >
+                                    <SettingsIcon size={16} aria-hidden="true" />
                                 </button>
                             </Tooltip>
                             <Tooltip label="Back to home" placement="bottom">
@@ -2644,6 +2681,16 @@ function WorkflowEditor() {
                                 <Tooltip label="Toggle light / dark mode" placement="bottom">
                                     <ThemeToggle />
                                 </Tooltip>
+                                <Tooltip label="Settings" placement="bottom">
+                                    <button
+                                        type="button"
+                                        onClick={() => guardedNavigate('/settings')}
+                                        aria-label="Settings"
+                                        className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-gray-200 bg-gray-100/80 text-gray-700 transition-colors hover:bg-gray-200/80 dark:border-gray-700 dark:bg-gray-800/80 dark:text-gray-200 dark:hover:bg-gray-700/80"
+                                    >
+                                        <SettingsIcon size={16} aria-hidden="true" />
+                                    </button>
+                                </Tooltip>
                                 <Tooltip label="Back to home" placement="bottom">
                                     <NavButton onClick={() => guardedNavigate('/')}>Back home</NavButton>
                                 </Tooltip>
@@ -2661,6 +2708,7 @@ function WorkflowEditor() {
                     <div className="flex min-w-0 flex-1 flex-col gap-3">
                     <div
                         ref={editorBoxRef}
+                        data-canvas-bg={userSettings.canvasBackground}
                         className={`workflow-editor relative ${running ? 'flow-running' : ''}`}
                     >
                         {/* Pulse the just-dropped node's ports. Injected as a rule keyed on

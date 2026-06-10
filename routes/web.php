@@ -17,4 +17,9 @@ Route::get('/workflows-list', function () {
     return Inertia::render('WorkflowList', ['workflows' => $workflows]);
 });
 
+Route::get('/settings', function () {
+    $workflows = \App\Models\Workflow::latest()->get();
+    return Inertia::render('Settings', ['workflows' => $workflows]);
+});
+
 Route::apiResource('workflows', WorkflowController::class); 

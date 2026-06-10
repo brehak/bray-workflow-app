@@ -1,6 +1,7 @@
 import { Head, Link } from '@inertiajs/react';
 import { Button, Heading, Text } from '@particle-academy/react-fancy';
 import { motion } from 'framer-motion';
+import { Settings } from 'lucide-react';
 import GradientDivider from '../Components/GradientDivider';
 import Logo from '../Components/Logo';
 import NavButton from '../Components/NavButton';
@@ -31,7 +32,17 @@ export default function Welcome() {
                             Fancy Workflows
                         </Heading>
                     </div>
-                    <ThemeToggle />
+                    <div className="flex items-center gap-2">
+                        <Link
+                            href="/settings"
+                            aria-label="Settings"
+                            title="Settings"
+                            className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-gray-200 bg-gray-100/80 text-gray-700 transition-colors hover:bg-gray-200/80 dark:border-gray-700 dark:bg-gray-800/80 dark:text-gray-200 dark:hover:bg-gray-700/80"
+                        >
+                            <Settings size={18} aria-hidden="true" />
+                        </Link>
+                        <ThemeToggle />
+                    </div>
                 </nav>
 
                 {/* Soft separator between the header and the page content */}

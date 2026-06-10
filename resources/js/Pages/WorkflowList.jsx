@@ -1,7 +1,7 @@
 import { Head, Link, router } from '@inertiajs/react';
 import { Badge, Button, Heading, Text } from '@particle-academy/react-fancy';
 import { motion, AnimatePresence } from 'framer-motion';
-import { AlertTriangle, Check } from 'lucide-react';
+import { AlertTriangle, Check, Search, X, Settings } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import GradientDivider from '../Components/GradientDivider';
 import Logo from '../Components/Logo';
@@ -167,10 +167,20 @@ export default function WorkflowList({ workflows }) {
     // saved workflows becomes a filter chip.
     const [activeTag, setActiveTag] = useState(null);
     const allTags = [...new Set(workflows.flatMap((w) => w.tags ?? []))].sort();
-    const visibleWorkflows = activeTag
-        ? workflows.filter((w) => (w.tags ?? []).includes(activeTag))
-        : workflows;
     const toggleTag = (tag) => setActiveTag((cur) => (cur === tag ? null : tag));
+
+    // Free-text search over the saved workflows — case-insensitive, matching
+    // against name, description, and tags. Combined with the tag filter above.
+    const [query, setQuery] = useState('');
+    const q = query.trim().toLowerCase();
+    const matchesQuery = (w) => {
+        if (!q) return true;
+        const haystack = [w.name ?? '', w.description ?? '', ...(w.tags ?? [])].join(' ').toLowerCase();
+        return haystack.includes(q);
+    };
+    const visibleWorkflows = workflows.filter(
+        (w) => (!activeTag || (w.tags ?? []).includes(activeTag)) && matchesQuery(w),
+    );
 
     return (
         <>
@@ -191,6 +201,14 @@ export default function WorkflowList({ workflows }) {
                             </div>
                         </div>
                         <div className="flex items-center gap-3">
+                            <Link
+                                href="/settings"
+                                aria-label="Settings"
+                                title="Settings"
+                                className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-gray-200 bg-gray-100/80 text-gray-700 transition-colors hover:bg-gray-200/80 dark:border-gray-700 dark:bg-gray-800/80 dark:text-gray-200 dark:hover:bg-gray-700/80"
+                            >
+                                <Settings size={18} aria-hidden="true" />
+                            </Link>
                             <ThemeToggle />
                             <Link href="/">
                                 <NavButton>Back home</NavButton>
@@ -243,9 +261,46 @@ export default function WorkflowList({ workflows }) {
                     <GradientDivider className="mb-8" />
 
                     {/* Saved Workflows Section */}
-                    <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
-                        Workflows you've built
-                    </p>
+                    <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                        <p className="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+                            Workflows you've built
+                        </p>
+                        {/* Search — filters the saved cards in real time. Hidden when
+                            there's nothing saved yet. */}
+                        {workflows.length > 0 && (
+                            <div className="relative w-full sm:w-72">
+                                <Search
+                                    size={15}
+                                    className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500"
+                                    aria-hidden="true"
+                                />
+                                <input
+                                    type="text"
+                                    value={query}
+                                    onChange={(e) => setQuery(e.target.value)}
+                                    placeholder="Search your workflows…"
+                                    aria-label="Search your workflows"
+                                    className="w-full rounded-lg border border-gray-200 bg-white py-2 pl-9 pr-9 text-sm text-gray-900 placeholder-gray-400 shadow-sm transition-colors focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 dark:border-gray-800 dark:bg-gray-900 dark:text-gray-100 dark:placeholder-gray-500 dark:focus:border-indigo-500"
+                                />
+                                <AnimatePresence>
+                                    {query && (
+                                        <motion.button
+                                            type="button"
+                                            onClick={() => setQuery('')}
+                                            aria-label="Clear search"
+                                            initial={{ opacity: 0, scale: 0.6 }}
+                                            animate={{ opacity: 1, scale: 1 }}
+                                            exit={{ opacity: 0, scale: 0.6 }}
+                                            transition={{ duration: 0.15 }}
+                                            className="absolute right-2 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-full text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:text-gray-500 dark:hover:bg-gray-800 dark:hover:text-gray-200"
+                                        >
+                                            <X size={14} aria-hidden="true" />
+                                        </motion.button>
+                                    )}
+                                </AnimatePresence>
+                            </div>
+                        )}
+                    </div>
                     {workflows.length === 0 ? (
                         <div className="flex flex-col items-center justify-center py-12 text-center rounded-xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900">
                             <Text className="text-gray-500">Nothing here yet.</Text>
@@ -288,79 +343,102 @@ export default function WorkflowList({ workflows }) {
                             )}
 
                             {visibleWorkflows.length === 0 ? (
-                                <div className="flex flex-col items-center justify-center py-12 text-center rounded-xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900">
-                                    <Text className="text-gray-500">No workflows tagged “{activeTag}”.</Text>
-                                    <button
-                                        type="button"
-                                        onClick={() => setActiveTag(null)}
-                                        className="mt-1 text-sm text-blue-600 hover:underline dark:text-blue-400"
-                                    >
-                                        Clear filter
-                                    </button>
-                                </div>
+                                q ? (
+                                    <div className="flex flex-col items-center justify-center py-12 text-center rounded-xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900">
+                                        <Text className="text-gray-500">No workflows match your search.</Text>
+                                        <Text className="mt-1 text-sm text-gray-400">
+                                            Try a different term, or clear the search to see them all.
+                                        </Text>
+                                        <button
+                                            type="button"
+                                            onClick={() => setQuery('')}
+                                            className="mt-2 text-sm text-blue-600 hover:underline dark:text-blue-400"
+                                        >
+                                            Clear search
+                                        </button>
+                                    </div>
+                                ) : (
+                                    <div className="flex flex-col items-center justify-center py-12 text-center rounded-xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900">
+                                        <Text className="text-gray-500">No workflows tagged “{activeTag}”.</Text>
+                                        <button
+                                            type="button"
+                                            onClick={() => setActiveTag(null)}
+                                            className="mt-1 text-sm text-blue-600 hover:underline dark:text-blue-400"
+                                        >
+                                            Clear filter
+                                        </button>
+                                    </div>
+                                )
                             ) : (
                                 <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                                    {visibleWorkflows.map((workflow) => (
-                                        <div
-                                            key={workflow.id}
-                                            className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-900"
-                                        >
-                                            {/* Mini graph preview — simplified dots + lines, not the editor. */}
-                                            <MiniCanvas
-                                                nodes={workflow.nodes}
-                                                edges={workflow.edges}
-                                                className="mb-4"
-                                            />
-                                            <Heading as="h3" size="lg" weight="semibold">
-                                                {workflow.name}
-                                            </Heading>
-                                            {workflow.description && (
-                                                <Text className="mt-1 text-sm text-gray-500">
-                                                    {workflow.description}
+                                    <AnimatePresence mode="popLayout">
+                                        {visibleWorkflows.map((workflow) => (
+                                            <motion.div
+                                                key={workflow.id}
+                                                layout
+                                                initial={{ opacity: 0, scale: 0.92 }}
+                                                animate={{ opacity: 1, scale: 1 }}
+                                                exit={{ opacity: 0, scale: 0.92 }}
+                                                transition={{ duration: 0.2, ease: 'easeOut' }}
+                                                className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-900"
+                                            >
+                                                {/* Mini graph preview — simplified dots + lines, not the editor. */}
+                                                <MiniCanvas
+                                                    nodes={workflow.nodes}
+                                                    edges={workflow.edges}
+                                                    className="mb-4"
+                                                />
+                                                <Heading as="h3" size="lg" weight="semibold">
+                                                    {workflow.name}
+                                                </Heading>
+                                                {workflow.description && (
+                                                    <Text className="mt-1 text-sm text-gray-500">
+                                                        {workflow.description}
+                                                    </Text>
+                                                )}
+                                                <Text className="mt-2 text-xs text-gray-400">
+                                                    {workflow.nodes.length} steps · {workflow.edges.length} connections
                                                 </Text>
-                                            )}
-                                            <Text className="mt-2 text-xs text-gray-400">
-                                                {workflow.nodes.length} steps · {workflow.edges.length} connections
-                                            </Text>
-                                            <Text className="mt-1 text-xs text-gray-400">
-                                                Saved {new Date(workflow.created_at).toLocaleDateString()}
-                                            </Text>
-                                            {(workflow.tags?.length ?? 0) > 0 && (
-                                                <div className="mt-3 flex flex-wrap gap-1.5">
-                                                    {workflow.tags.map((tag) => (
-                                                        <Badge key={tag} variant="soft" size="sm" color="blue">
-                                                            {tag}
-                                                        </Badge>
-                                                    ))}
+                                                <Text className="mt-1 text-xs text-gray-400">
+                                                    Saved {new Date(workflow.created_at).toLocaleDateString()}
+                                                </Text>
+                                                {(workflow.tags?.length ?? 0) > 0 && (
+                                                    <div className="mt-3 flex flex-wrap gap-1.5">
+                                                        {workflow.tags.map((tag) => (
+                                                            <Badge key={tag} variant="soft" size="sm" color="blue">
+                                                                {tag}
+                                                            </Badge>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                                <div className="mt-4 flex gap-2">
+                                                    <Tooltip label="Open this workflow in the editor">
+                                                        <Link href={`/workflow?id=${workflow.id}`}>
+                                                            <Button variant="primary" size="sm">Load</Button>
+                                                        </Link>
+                                                    </Tooltip>
+                                                    <Tooltip label="Save a copy of this workflow">
+                                                        <Button
+                                                            variant="outline"
+                                                            size="sm"
+                                                            onClick={() => duplicateWorkflow(workflow)}
+                                                        >
+                                                            Duplicate
+                                                        </Button>
+                                                    </Tooltip>
+                                                    <Tooltip label="Delete this workflow">
+                                                        <Button
+                                                            variant="outline"
+                                                            size="sm"
+                                                            onClick={() => setPendingDelete(workflow)}
+                                                        >
+                                                            Delete
+                                                        </Button>
+                                                    </Tooltip>
                                                 </div>
-                                            )}
-                                            <div className="mt-4 flex gap-2">
-                                                <Tooltip label="Open this workflow in the editor">
-                                                    <Link href={`/workflow?id=${workflow.id}`}>
-                                                        <Button variant="primary" size="sm">Load</Button>
-                                                    </Link>
-                                                </Tooltip>
-                                                <Tooltip label="Save a copy of this workflow">
-                                                    <Button
-                                                        variant="outline"
-                                                        size="sm"
-                                                        onClick={() => duplicateWorkflow(workflow)}
-                                                    >
-                                                        Duplicate
-                                                    </Button>
-                                                </Tooltip>
-                                                <Tooltip label="Delete this workflow">
-                                                    <Button
-                                                        variant="outline"
-                                                        size="sm"
-                                                        onClick={() => setPendingDelete(workflow)}
-                                                    >
-                                                        Delete
-                                                    </Button>
-                                                </Tooltip>
-                                            </div>
-                                        </div>
-                                    ))}
+                                            </motion.div>
+                                        ))}
+                                    </AnimatePresence>
                                 </div>
                             )}
                         </>
