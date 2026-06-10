@@ -8,9 +8,11 @@ import { Workflow as WorkflowIcon, ArrowLeft, Save, Download, Upload, Undo2, Red
 import confetti from 'canvas-confetti';
 import GradientDivider from '../Components/GradientDivider';
 import ConnectHint from '../Components/ConnectHint';
+import DescriptionField from '../Components/DescriptionField';
 import Logo from '../Components/Logo';
 import NavButton from '../Components/NavButton';
 import NodeConfigPanel from '../Components/NodeConfigPanel';
+import RunFeedPanel from '../Components/RunFeedPanel';
 import RunHistoryPanel from '../Components/RunHistoryPanel';
 import SaveStatusIndicator from '../Components/SaveStatusIndicator';
 import ShortcutsModal from '../Components/ShortcutsModal';
@@ -1342,15 +1344,22 @@ const withToasts = (registry, meta, fire, hooks = {}) => {
     const wrapped = {};
     for (const [id, exec] of Object.entries(registry)) {
         wrapped[id] = async (ctx) => {
-            hooks.onNodeStart?.(ctx.node);
+            // Tee the executor's log events to the host (run-feed panel) while
+            // still forwarding everything to the runner's own event handler.
+            const emit = (event) => {
+                if (event?.type === 'log') hooks.onLog?.(event, ctx.node);
+                ctx.emit?.(event);
+            };
+            const runCtx = { ...ctx, emit };
+            hooks.onNodeStart?.(runCtx.node);
             try {
-                const result = await exec(ctx);
+                const result = await exec(runCtx);
                 const build = meta[id];
                 if (build) fire(build(result));
-                hooks.onNodeDone?.(ctx.node, result);
+                hooks.onNodeDone?.(runCtx.node, result);
                 return result;
             } catch (err) {
-                hooks.onNodeError?.(ctx.node, err);
+                hooks.onNodeError?.(runCtx.node, err);
                 throw err; // preserve existing behaviour — the runner still sees the error
             }
         };
@@ -1385,10 +1394,10 @@ const accentThemes = {
     },
     jobapplication: {
         label: 'Job Application',
-        bar: 'bg-purple-500',
-        badge: 'bg-purple-100 text-purple-700 ring-purple-200 dark:bg-purple-500/15 dark:text-purple-300 dark:ring-purple-500/30',
-        button: 'purple',
-        text: 'text-purple-600 dark:text-purple-400',
+        bar: 'bg-fuchsia-500',
+        badge: 'bg-fuchsia-100 text-fuchsia-700 ring-fuchsia-200 dark:bg-fuchsia-500/15 dark:text-fuchsia-300 dark:ring-fuchsia-500/30',
+        button: 'fuchsia',
+        text: 'text-fuchsia-600 dark:text-fuchsia-400',
     },
     contentpublishing: {
         label: 'Content Publishing',
@@ -1406,17 +1415,17 @@ const accentThemes = {
     },
     ptorequest: {
         label: 'PTO Request',
-        bar: 'bg-green-500',
-        badge: 'bg-green-100 text-green-700 ring-green-200 dark:bg-green-500/15 dark:text-green-300 dark:ring-green-500/30',
-        button: 'green',
-        text: 'text-green-600 dark:text-green-400',
+        bar: 'bg-sky-500',
+        badge: 'bg-sky-100 text-sky-700 ring-sky-200 dark:bg-sky-500/15 dark:text-sky-300 dark:ring-sky-500/30',
+        button: 'sky',
+        text: 'text-sky-600 dark:text-sky-400',
     },
     productrecall: {
         label: 'Product Recall',
-        bar: 'bg-red-500',
-        badge: 'bg-red-100 text-red-700 ring-red-200 dark:bg-red-500/15 dark:text-red-300 dark:ring-red-500/30',
-        button: 'red',
-        text: 'text-red-600 dark:text-red-400',
+        bar: 'bg-orange-500',
+        badge: 'bg-orange-100 text-orange-700 ring-orange-200 dark:bg-orange-500/15 dark:text-orange-300 dark:ring-orange-500/30',
+        button: 'orange',
+        text: 'text-orange-600 dark:text-orange-400',
     },
     eventplanning: {
         label: 'Event Planning',
@@ -1491,6 +1500,26 @@ function WorkflowEditor() {
     const [showHistory, setShowHistory] = useState(false);
     const [showShortcuts, setShowShortcuts] = useState(false);
 
+    // Our own run feed. The editor's built-in feed is hidden (showFeed={false})
+    // so we can give it collapse/clear controls. We capture the executors' log
+    // events (via a wrapped `emit`, see withToasts) plus reconstruct the
+    // "run started / complete" lines from the run lifecycle. Accumulates across
+    // runs (like the built-in) until cleared. `feedCollapsed` persists on-page.
+    const [feed, setFeed] = useState([]);
+    const [feedCollapsed, setFeedCollapsed] = useState(false);
+    const feedIdRef = useRef(0);
+    const appendFeed = useCallback((partial) => {
+        setFeed((f) => {
+            const entry = { id: `feed-${feedIdRef.current++}`, at: Date.now(), level: 'info', ...partial };
+            const next = [...f, entry];
+            return next.length > 300 ? next.slice(-300) : next;
+        });
+    }, []);
+    const handleLog = useCallback(
+        (event, node) => appendFeed({ level: event.level ?? 'info', text: event.message ?? '', nodeId: event.nodeId ?? node?.id }),
+        [appendFeed],
+    );
+
     const markRunning = useCallback(() => {
         setRunning(true);
         if (stopTimer.current) clearTimeout(stopTimer.current);
@@ -1501,12 +1530,13 @@ function WorkflowEditor() {
         (node) => {
             if (!currentRunRef.current) {
                 currentRunRef.current = { startedAt: Date.now(), lastAt: Date.now(), nodes: {}, error: false };
+                appendFeed({ level: 'info', text: '▶ run started' });
             }
             if (node?.id) currentRunRef.current.nodes[node.id] = 'running';
             currentRunRef.current.lastAt = Date.now();
             markRunning();
         },
-        [markRunning],
+        [markRunning, appendFeed],
     );
 
     const handleNodeDone = useCallback((node) => {
@@ -1547,10 +1577,11 @@ function WorkflowEditor() {
                 onNodeStart: handleNodeStart,
                 onNodeDone: handleNodeDone,
                 onNodeError: handleNodeError,
+                onLog: handleLog,
             }),
             ...ux.executors,
         };
-    }, [type, ux, handleNodeStart, handleNodeDone, handleNodeError]);
+    }, [type, ux, handleNodeStart, handleNodeDone, handleNodeError, handleLog]);
 
     const [graph, setGraph] = useState(template ?? blankGraph);
     const [name, setName] = useState(template?.name ?? '');
@@ -1792,7 +1823,8 @@ function WorkflowEditor() {
             nodes,
         };
         setRunHistory((h) => [entry, ...h].slice(0, 5));
-    }, [running]);
+        appendFeed({ level: success ? 'info' : 'error', text: success ? '✓ run complete' : '✗ run failed' });
+    }, [running, appendFeed]);
 
     // The editor box, so the "Drag to connect" hint can position itself against
     // the node's output port.
@@ -2030,13 +2062,10 @@ function WorkflowEditor() {
                             onChange={(e) => setName(e.target.value)}
                             placeholder="Workflow name..."
                             className="text-xl font-semibold bg-transparent border-none outline-none text-gray-900 dark:text-white placeholder-gray-400 w-full min-w-96"                        />
-                        <input
-                            type="text"
-                            value={description}
-                            onChange={(e) => setDescription(e.target.value)}
-                            placeholder="Add a description..."
-                            className="text-sm bg-transparent border-none outline-none text-gray-500 placeholder-gray-400"
-                        />
+                        {/* Inline-editable description: truncated line → click to expand
+                            into a compact (max 3-line) textarea. Same `description`
+                            state, so Save behaves exactly as before. */}
+                        <DescriptionField value={description} onChange={setDescription} />
 
                         {/* Tags: type + Enter to add (removable via the pill X),
                             with quick picks for common tags. */}
@@ -2063,15 +2092,9 @@ function WorkflowEditor() {
                         </div>
                     </div>
 
-                    <div className="flex items-center gap-3">
-                        <Tooltip label="Toggle light / dark mode" placement="bottom">
-                            <ThemeToggle />
-                        </Tooltip>
-                        {/* Auto-save status — shown once there's a workflow to save. */}
-                        {graph.nodes.length > 0 && <SaveStatusIndicator state={saveState} />}
-                        {status && (
-                            <Text className="text-sm text-gray-500">{status}</Text>
-                        )}
+                    <div className="flex flex-col items-end gap-1.5">
+                        {/* Top row: action toolbar + nav buttons. */}
+                        <div className="flex items-center gap-3">
                         {/* Floating glass toolbar: Undo · Redo · Save · Export · Import */}
                         <motion.div
                             initial={{ opacity: 0, y: -8, scale: 0.98 }}
@@ -2159,9 +2182,24 @@ function WorkflowEditor() {
                         <Tooltip label="Browse your saved workflows" placement="bottom">
                             <NavButton onClick={() => guardedNavigate('/workflows-list')}>Saved Workflows</NavButton>
                         </Tooltip>
+                        <Tooltip label="Toggle light / dark mode" placement="bottom">
+                            <ThemeToggle />
+                        </Tooltip>
                         <Tooltip label="Back to home" placement="bottom">
                             <NavButton onClick={() => guardedNavigate('/')}>Back home</NavButton>
                         </Tooltip>
+                        </div>
+
+                        {/* Status messages — small, subtle, right-aligned, stacked
+                            below the buttons so they don't crowd the toolbar. */}
+                        {(graph.nodes.length > 0 || status) && (
+                            <div className="flex flex-col items-end gap-0.5 pr-1 text-right">
+                                {graph.nodes.length > 0 && <SaveStatusIndicator state={saveState} />}
+                                {status && (
+                                    <Text className="text-xs text-gray-400 dark:text-gray-500">{status}</Text>
+                                )}
+                            </div>
+                        )}
                     </div>
                 </header>
 
@@ -2170,9 +2208,11 @@ function WorkflowEditor() {
 
                 <main className="flex-1 p-6">
                     <div className="flex flex-col gap-4 lg:flex-row">
+                    {/* Left column: the editor box with the collapsible run feed below it. */}
+                    <div className="flex min-w-0 flex-1 flex-col gap-3">
                     <div
                         ref={editorBoxRef}
-                        className={`workflow-editor relative min-w-0 flex-1 ${running ? 'flow-running' : ''}`}
+                        className={`workflow-editor relative ${running ? 'flow-running' : ''}`}
                     >
                         {/* Pulse the just-dropped node's ports. Injected as a rule keyed on
                             the node's data-id since React Flow owns the handle elements. */}
@@ -2189,9 +2229,19 @@ function WorkflowEditor() {
                                 value={graph}
                                 executors={executors}
                                 height={720}
-                                // We render our own config sidebar (NodeConfigPanel), which
-                                // supports the built-in node types; hide the editor's own.
+                                // We render our own config sidebar (NodeConfigPanel) and our
+                                // own collapsible run feed (RunFeedPanel), so hide the
+                                // editor's built-in panel and feed.
                                 showPanel={false}
+                                showFeed={false}
+                                // Friendlier count in the toolbar. The editor's built-in
+                                // "X nodes · Y edges" is hidden via CSS (.ff-editor__count)
+                                // and replaced with this "steps · connections" version.
+                                extraToolbar={
+                                    <span className="ml-auto text-[11px] text-gray-500 dark:text-gray-400">
+                                        {graph.nodes.length} steps · {graph.edges.length} connections
+                                    </span>
+                                }
                                 onChange={onGraphChange}
                                 metadata={{
                                     name,
@@ -2233,7 +2283,7 @@ function WorkflowEditor() {
                                             Start building your workflow
                                         </h2>
                                         <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
-                                            Drag a node from the left panel to get started
+                                            Drag a step from the left panel to get started
                                         </p>
 
                                         {/* Visual hint pointing toward the left node palette.
@@ -2248,7 +2298,7 @@ function WorkflowEditor() {
                                                 transition={{ duration: 1.4, repeat: Infinity, ease: 'easeInOut' }}
                                             >
                                                 <ArrowLeft size={28} strokeWidth={2} aria-hidden="true" />
-                                                <span className="text-sm font-medium">Node palette</span>
+                                                <span className="text-sm font-medium">Step palette</span>
                                             </motion.div>
                                         </div>
                                     </div>
@@ -2272,6 +2322,15 @@ function WorkflowEditor() {
                                 </button>
                             </Tooltip>
                         </div>
+                    </div>
+
+                    {/* Collapsible terminal-style run feed, below the editor. */}
+                    <RunFeedPanel
+                        feed={feed}
+                        collapsed={feedCollapsed}
+                        onToggle={() => setFeedCollapsed((c) => !c)}
+                        onClear={() => setFeed([])}
+                    />
                     </div>
 
                     {/* Right sidebar: configure the selected node. Edits flow back

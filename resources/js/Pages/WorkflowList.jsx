@@ -39,8 +39,8 @@ const templates = [
         description: 'Triage incoming bug reports, assign to the right developer, track fixes and close issues.',
         nodes: 7,
         edges: 7,
-        accent: 'from-red-500 to-orange-400',
-        glow: ['#ef4444', '#fb923c'], // red → orange
+        accent: 'from-red-600 to-red-400',
+        glow: ['#dc2626', '#f87171'], // red
     },
     {
         id: 'jobapplication',
@@ -48,8 +48,8 @@ const templates = [
         description: 'Screen applicants, run phone and technical interviews, then route strong candidates to an offer.',
         nodes: 8,
         edges: 7,
-        accent: 'from-purple-500 to-fuchsia-500',
-        glow: ['#a855f7', '#d946ef'], // purple → fuchsia
+        accent: 'from-fuchsia-500 to-purple-500',
+        glow: ['#d946ef', '#a855f7'], // fuchsia → purple
     },
     {
         id: 'contentpublishing',
@@ -75,8 +75,8 @@ const templates = [
         description: 'Check team coverage, get manager approval, update the calendar, and notify the team.',
         nodes: 8,
         edges: 7,
-        accent: 'from-green-500 to-emerald-500',
-        glow: ['#22c55e', '#10b981'], // green → emerald
+        accent: 'from-sky-500 to-cyan-400',
+        glow: ['#0ea5e9', '#22d3ee'], // sky → cyan
     },
     {
         id: 'productrecall',
@@ -84,8 +84,8 @@ const templates = [
         description: 'Assess a product issue, notify regulators if needed, alert customers, and process returns.',
         nodes: 8,
         edges: 8,
-        accent: 'from-red-500 to-rose-500',
-        glow: ['#ef4444', '#f43f5e'], // red → rose
+        accent: 'from-orange-500 to-amber-400',
+        glow: ['#f97316', '#fbbf24'], // orange → amber
     },
     {
         id: 'eventplanning',
@@ -203,29 +203,31 @@ export default function WorkflowList({ workflows }) {
                     <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
                         Templates
                     </p>
-                    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 mb-8">
+                    <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 mb-8">
                         {templates.map((template) => (
                             <motion.div
                                 key={template.id}
-                                className="card-glow relative overflow-hidden rounded-xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-900"
+                                className="card-glow relative flex flex-col overflow-hidden rounded-xl border border-gray-200 bg-white p-4 shadow-sm dark:border-gray-800 dark:bg-gray-900"
                                 style={{ '--card-glow': template.glow[0], '--card-glow-2': template.glow[1] }}
                                 whileHover={{ y: -6, boxShadow: '0 20px 30px -10px rgba(0, 0, 0, 0.25)' }}
                                 transition={{ type: 'spring', stiffness: 300, damping: 22 }}
                             >
                                 {/* Accent gradient on the top edge */}
                                 <div className={`absolute inset-x-0 top-0 h-1 bg-gradient-to-r ${template.accent}`} />
-                                <Heading as="h3" size="lg" weight="semibold">
+                                <Heading as="h3" size="sm" weight="semibold" className="leading-snug">
                                     {template.title}
                                 </Heading>
-                                <Text className="mt-2 text-sm text-gray-500">
+                                <Text className="mt-1.5 flex-1 text-xs leading-relaxed text-gray-500 dark:text-gray-400">
                                     {template.description}
                                 </Text>
-                                <Text className="mt-3 text-xs text-gray-400">
-                                    {template.nodes} nodes · {template.edges} edges
+                                <Text className="mt-2 text-[11px] text-gray-400 dark:text-gray-500">
+                                    {template.nodes} steps · {template.edges} connections
                                 </Text>
-                                <div className="mt-4">
-                                    <Link href={`/workflow?type=${template.id}`}>
-                                        <Button variant="primary">Launch</Button>
+                                <div className="mt-3">
+                                    <Link href={`/workflow?type=${template.id}`} className="block">
+                                        <Button variant="primary" size="sm" className="w-full">
+                                            Launch
+                                        </Button>
                                     </Link>
                                 </div>
                             </motion.div>
@@ -313,7 +315,7 @@ export default function WorkflowList({ workflows }) {
                                                 </Text>
                                             )}
                                             <Text className="mt-2 text-xs text-gray-400">
-                                                {workflow.nodes.length} nodes · {workflow.edges.length} edges
+                                                {workflow.nodes.length} steps · {workflow.edges.length} connections
                                             </Text>
                                             <Text className="mt-1 text-xs text-gray-400">
                                                 Saved {new Date(workflow.created_at).toLocaleDateString()}

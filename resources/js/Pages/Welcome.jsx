@@ -67,24 +67,43 @@ export default function Welcome() {
 
                             <motion.div variants={fadeUp}>
                                 <Text className="mx-auto mt-6 max-w-2xl text-lg leading-relaxed text-gray-600 dark:text-gray-300 sm:mt-8 sm:text-xl">
-                                    Design, run, and watch your processes come to life on an interactive canvas — from
-                                    employee onboarding to order fulfillment and bug triage. No code required.
+                                    Choose from 10 ready-made workflow templates or build your own from scratch — then
+                                    design, run, and watch your processes come to life on an interactive canvas. No code
+                                    required.
                                 </Text>
                             </motion.div>
 
                             <motion.div variants={fadeUp} className="mt-10 flex flex-wrap items-center justify-center gap-3 sm:mt-12">
-                                {/* Both actions are equally-sized pills with matching hover/tap
-                                    motion; the filled vs. outline treatment carries the hierarchy. */}
-                                <Link href="/workflow">
+                                {/* Primary CTA — guide users to the templates / workflows browser.
+                                    Larger, filled, and badged so it clearly outranks the secondary
+                                    "New Workflow" outline button. */}
+                                <Link href="/workflows-list">
                                     <motion.div className="inline-flex" whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}>
-                                        <Button variant="primary" size="lg" className="rounded-full">
-                                            New Workflow
+                                        <Button
+                                            variant="primary"
+                                            size="lg"
+                                            className="rounded-full px-7 py-3.5 text-base font-semibold shadow-lg shadow-indigo-500/25"
+                                        >
+                                            <span className="inline-flex items-center gap-2.5">
+                                                Browse Templates &amp; Workflows
+                                                <span className="rounded-full bg-white/20 px-2 py-0.5 text-[11px] font-semibold leading-none text-white">
+                                                    10 templates
+                                                </span>
+                                            </span>
                                         </Button>
                                     </motion.div>
                                 </Link>
-                                <Link href="/workflows-list">
-                                    <NavButton size="lg">Saved Workflows</NavButton>
+                                {/* Secondary — build from scratch. */}
+                                <Link href="/workflow">
+                                    <NavButton>New Workflow</NavButton>
                                 </Link>
+                            </motion.div>
+
+                            {/* Subtle hint nudging toward templates. */}
+                            <motion.div variants={fadeUp}>
+                                <Text className="mt-5 text-sm text-gray-500 dark:text-gray-400">
+                                    Start from one of 10 ready-made templates or build your own from scratch.
+                                </Text>
                             </motion.div>
                         </motion.div>
                     </section>

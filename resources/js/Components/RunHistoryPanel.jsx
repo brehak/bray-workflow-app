@@ -87,7 +87,7 @@ export default function RunHistoryPanel({ open, runs, onClose, onClear }) {
                                                         {run.success ? 'Completed' : 'Completed with errors'}
                                                     </div>
                                                     <div className="text-xs text-gray-400 dark:text-gray-500">
-                                                        {formatTime(run.startedAt)} · {run.durationSec.toFixed(1)}s · {ran} node
+                                                        {formatTime(run.startedAt)} · {run.durationSec.toFixed(1)}s · {ran} step
                                                         {ran === 1 ? '' : 's'}
                                                     </div>
                                                 </div>

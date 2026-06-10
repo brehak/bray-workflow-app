@@ -82,6 +82,13 @@
  * keyframes (the "Drag to connect" hint we render ourselves uses framer-motion).
  * The drop pulse is applied to a specific node via an injected rule keyed on its
  * data-id (see Workflow.jsx). */
+/* Hide the editor's built-in "X nodes · Y edges" toolbar count — we render a
+   friendlier "X steps · Y connections" in its place via FlowEditor's
+   extraToolbar (see Workflow.jsx). */
+.workflow-editor .ff-editor__count {
+    display: none;
+}
+
 .workflow-editor .react-flow__handle {
     transition: box-shadow 0.2s ease, border-color 0.2s ease;
 }

@@ -26,7 +26,7 @@ const TYPE_FIELDS = {
             key: 'outputData',
             label: 'Output Data (JSON)',
             kind: 'json',
-            description: 'Mock data this action emits to downstream nodes.',
+            description: 'Mock data this action emits to downstream steps.',
             placeholder: '{\n  "status": "ok"\n}',
         },
     ],
@@ -63,7 +63,7 @@ export default function NodeConfigPanel({ node, onChange }) {
     if (!node) {
         return (
             <PanelShell>
-                <p className="text-sm text-gray-400 dark:text-gray-500">Select a node to configure it.</p>
+                <p className="text-sm text-gray-400 dark:text-gray-500">Select a step to configure it.</p>
             </PanelShell>
         );
     }

@@ -9,7 +9,7 @@ const SHORTCUTS = [
     { keys: '⌘I', label: 'Import JSON' },
     { keys: 'Space', label: 'Pan canvas' },
     { keys: 'Scroll', label: 'Zoom in / out' },
-    { keys: 'Del', label: 'Delete selected node' },
+    { keys: 'Del', label: 'Delete selected step' },
     { keys: 'Esc', label: 'Deselect / Close panel' },
 ];
 

@@ -26,7 +26,9 @@
       "Bash(echo \"workflows before: $\\(sqlite3 database/database.sqlite 'select count\\(*\\) from workflows;'\\)\")",
       "Bash(rm -rf /tmp/as2-profile)",
       "Bash(node autosave2.mjs)",
-      "Bash(echo \"build exit: $?\")"
+      "Bash(echo \"build exit: $?\")",
+      "Bash(awk '/interface HeadingProps/{f=1} f{print} /\\\\}/{if\\(f\\)exit}' index.d.ts)",
+      "Bash(curl -s -o /dev/null -w \"GET /workflows/7 -> %{http_code}\\\\n\" http://127.0.0.1:8000/workflows/7)"
     ],
     "additionalDirectories": [
       "/private/tmp",
