@@ -20,7 +20,7 @@
 > _**Add screenshot here** — drop an image of the workflow editor (e.g. `docs/screenshot.png`) and reference it below._
 >
 > ```markdown
-> ![Fancy Workflows](docs/screenshot.png)
+![Fancy Workflows](photos/README_image.png)
 > ```
 
 ---
