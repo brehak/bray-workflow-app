@@ -22,4 +22,4 @@ Route::get('/settings', function () {
     return Inertia::render('Settings', ['workflows' => $workflows]);
 });
 
-Route::apiResource('workflows', WorkflowController::class); 
+Route::apiResource('workflows', WorkflowController::class);

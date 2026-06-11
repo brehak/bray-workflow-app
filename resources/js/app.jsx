@@ -8,6 +8,7 @@ import { createElement } from 'react';
 import { createRoot } from 'react-dom/client';
 import { AnimatePresence, motion } from 'framer-motion';
 import { getInitialTheme, applyTheme } from './hooks/useTheme';
+import NavigationProgress from './Components/NavigationProgress';
 
 // Apply the stored (or system) theme before the app renders so there's no flash
 // of the wrong theme on load or when navigating between pages.
@@ -41,16 +42,28 @@ function PageWrapper({ children }) {
     );
 }
 
+// Root — keeps the global navigation progress indicator mounted (so its router
+// listeners persist) alongside the per-page transition.
+function Root({ App, props }) {
+    return (
+        <>
+            <NavigationProgress />
+            <PageWrapper>{createElement(App, props)}</PageWrapper>
+        </>
+    );
+}
+
 createInertiaApp({
     strictMode: true,
+    // We render our own gradient progress bar (see NavigationProgress), so turn
+    // off Inertia's built-in one to avoid a double indicator.
+    progress: false,
     resolve: (name) =>
         resolvePageComponent(
             `./Pages/${name}.jsx`,
             import.meta.glob('./Pages/**/*.jsx'),
         ),
     setup({ el, App, props }) {
-        createRoot(el).render(
-            createElement(PageWrapper, null, createElement(App, props)),
-        );
+        createRoot(el).render(createElement(Root, { App, props }));
     },
 });

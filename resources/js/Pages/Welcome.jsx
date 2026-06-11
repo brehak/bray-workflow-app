@@ -45,9 +45,6 @@ export default function Welcome() {
                     </div>
                 </nav>
 
-                {/* Soft separator between the header and the page content */}
-                <GradientDivider />
-
                 <main className="flex flex-1 flex-col">
                     {/* Hero */}
                     <div className="bg-gradient-to-b from-blue-100/50 to-transparent dark:from-blue-950/40 dark:via-purple-950/20 dark:to-transparent">
@@ -75,6 +72,11 @@ export default function Welcome() {
                                     />
                                 </span>
                             </motion.h1>
+
+                            {/* Soft gradient divider sitting just beneath the headline */}
+                            <motion.div variants={fadeUp}>
+                                <GradientDivider className="mx-auto mt-6 max-w-sm sm:mt-8" />
+                            </motion.div>
 
                             <motion.div variants={fadeUp}>
                                 <Text className="mx-auto mt-6 max-w-2xl text-lg leading-relaxed text-gray-600 dark:text-gray-300 sm:mt-8 sm:text-xl">

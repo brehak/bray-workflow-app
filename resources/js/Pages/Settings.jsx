@@ -1,7 +1,7 @@
 import { Head, Link, router } from '@inertiajs/react';
-import { Button, Heading, Text, Switch, Select, RadioGroup, Input } from '@particle-academy/react-fancy';
+import { Button, Heading, Text, Switch, Select, RadioGroup, Input, MultiSwitch } from '@particle-academy/react-fancy';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Download, Trash2, AlertTriangle, Check } from 'lucide-react';
+import { Download, Trash2, AlertTriangle, Check, Home, ArrowLeft } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import GradientDivider from '../Components/GradientDivider';
 import Logo from '../Components/Logo';
@@ -13,6 +13,9 @@ import {
     AUTOSAVE_OPTIONS,
     CANVAS_BG_OPTIONS,
     TAG_OPTIONS,
+    ANIMATION_SPEED_OPTIONS,
+    TOAST_POSITION_OPTIONS,
+    TOAST_DURATION_OPTIONS,
     getSettings,
     saveSettings,
     isGuideEnabled,
@@ -73,6 +76,13 @@ export default function Settings({ workflows = [] }) {
 
     // Persist a patch and reflect it in local state.
     const update = (patch) => setSettings(saveSettings(patch));
+
+    // Settings already persist on every change; this re-saves the full set to be
+    // safe, then heads home.
+    const saveAndGoHome = () => {
+        saveSettings(settings);
+        router.visit('/');
+    };
 
     const toggleTag = (tag) => {
         const has = settings.defaultTags.includes(tag);
@@ -239,10 +249,69 @@ export default function Settings({ workflows = [] }) {
                             </Row>
                         </Section>
 
+                        {/* ── Editor & Canvas ──────────────────────────────────── */}
+                        <Section title="Editor & Canvas" description="How the canvas behaves while you build and run.">
+                            <Row label="Animation speed" hint="How fast node execution animations play when you run a workflow.">
+                                <MultiSwitch
+                                    list={ANIMATION_SPEED_OPTIONS}
+                                    value={settings.animationSpeed}
+                                    onValueChange={(v) => update({ animationSpeed: v })}
+                                    aria-label="Animation speed"
+                                />
+                            </Row>
+
+                            <Row label="Confirm before deleting nodes" hint="Ask for confirmation before a step is removed from the canvas.">
+                                <Switch
+                                    checked={settings.confirmNodeDelete}
+                                    onCheckedChange={(c) => update({ confirmNodeDelete: c })}
+                                    aria-label="Confirm before deleting nodes"
+                                />
+                            </Row>
+                        </Section>
+
+                        {/* ── Notifications ────────────────────────────────────── */}
+                        <Section title="Notifications" description="Where and how long toast notifications appear when a workflow runs.">
+                            <Row label="Toast position" hint="Which corner notifications appear in.">
+                                <Select
+                                    list={TOAST_POSITION_OPTIONS}
+                                    value={settings.toastPosition}
+                                    onValueChange={(v) => update({ toastPosition: v })}
+                                    aria-label="Toast position"
+                                />
+                            </Row>
+
+                            <Row label="Toast duration" hint="How long each notification stays on screen.">
+                                <MultiSwitch
+                                    list={TOAST_DURATION_OPTIONS}
+                                    value={settings.toastDuration}
+                                    onValueChange={(v) => update({ toastDuration: v })}
+                                    aria-label="Toast duration"
+                                />
+                            </Row>
+                        </Section>
+
+                        {/* ── Display ──────────────────────────────────────────── */}
+                        <Section title="Display" description="How workflows are presented around the app.">
+                            <Row label="Show step counts on cards" hint="Show the “X steps · Y connections” line on workflow cards.">
+                                <Switch
+                                    checked={settings.showStepCounts}
+                                    onCheckedChange={(c) => update({ showStepCounts: c })}
+                                    aria-label="Show step counts on cards"
+                                />
+                            </Row>
+                        </Section>
+
                         {/* ── Workflow Defaults ────────────────────────────────── */}
                         <Section title="Workflow Defaults" description="Applied to brand-new workflows you start.">
-                            <Row label="Default tags" hint="Automatically added to new workflows.">
-                                <div className="flex flex-wrap gap-2 sm:justify-end">
+                            {/* Tags get a full-width block (label above, chips wrapping
+                                below) rather than Row's narrow right column, so the long
+                                list wraps cleanly instead of overflowing the card. */}
+                            <div>
+                                <Text className="text-sm font-medium text-gray-800 dark:text-gray-100">Default tags</Text>
+                                <Text className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                                    Automatically added to new workflows.
+                                </Text>
+                                <div className="mt-3 flex flex-wrap gap-2">
                                     {TAG_OPTIONS.map((tag) => {
                                         const on = settings.defaultTags.includes(tag);
                                         return (
@@ -258,7 +327,7 @@ export default function Settings({ workflows = [] }) {
                                         );
                                     })}
                                 </div>
-                            </Row>
+                            </div>
 
                             <Row label="Name prefix" hint="Prefilled at the start of a new workflow's name.">
                                 <Input
@@ -298,6 +367,22 @@ export default function Settings({ workflows = [] }) {
                                 </Button>
                             </Row>
                         </Section>
+
+                        {/* Footer actions — save everything and head home, or just go back. */}
+                        <motion.div variants={item} className="flex flex-col-reverse gap-3 pt-1 sm:flex-row sm:items-center sm:justify-end">
+                            <Button variant="outline" color="gray" onClick={() => window.history.back()}>
+                                <span className="inline-flex items-center gap-2">
+                                    <ArrowLeft size={16} aria-hidden="true" />
+                                    Back
+                                </span>
+                            </Button>
+                            <Button variant="primary" size="lg" onClick={saveAndGoHome}>
+                                <span className="inline-flex items-center gap-2">
+                                    <Home size={18} aria-hidden="true" />
+                                    Save &amp; Go Home
+                                </span>
+                            </Button>
+                        </motion.div>
                     </motion.div>
                 </main>
             </div>

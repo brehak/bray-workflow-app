@@ -9,6 +9,7 @@ import MiniCanvas from '../Components/MiniCanvas';
 import NavButton from '../Components/NavButton';
 import ThemeToggle from '../Components/ThemeToggle';
 import Tooltip from '../Components/Tooltip';
+import { getSettings } from '../lib/settings';
 import '../../css/card-glow.css';
 
 const templates = [
@@ -108,6 +109,10 @@ const templates = [
 ];
 
 export default function WorkflowList({ workflows }) {
+    // Display preference (read from localStorage on mount): whether cards show
+    // the "X steps · Y connections" line.
+    const [showStepCounts] = useState(() => getSettings().showStepCounts);
+
     // The workflow awaiting delete confirmation (null = modal closed).
     const [pendingDelete, setPendingDelete] = useState(null);
 
@@ -243,9 +248,11 @@ export default function WorkflowList({ workflows }) {
                                 <Text className="mt-1.5 flex-1 text-xs leading-relaxed text-gray-500 dark:text-gray-400">
                                     {template.description}
                                 </Text>
-                                <Text className="mt-2 text-[11px] text-gray-400 dark:text-gray-500">
-                                    {template.nodes} steps · {template.edges} connections
-                                </Text>
+                                {showStepCounts && (
+                                    <Text className="mt-2 text-[11px] text-gray-400 dark:text-gray-500">
+                                        {template.nodes} steps · {template.edges} connections
+                                    </Text>
+                                )}
                                 <div className="mt-3">
                                     <Link href={`/workflow?type=${template.id}`} className="block">
                                         <Button variant="primary" size="sm" className="w-full">
@@ -396,9 +403,11 @@ export default function WorkflowList({ workflows }) {
                                                         {workflow.description}
                                                     </Text>
                                                 )}
-                                                <Text className="mt-2 text-xs text-gray-400">
-                                                    {workflow.nodes.length} steps · {workflow.edges.length} connections
-                                                </Text>
+                                                {showStepCounts && (
+                                                    <Text className="mt-2 text-xs text-gray-400">
+                                                        {workflow.nodes.length} steps · {workflow.edges.length} connections
+                                                    </Text>
+                                                )}
                                                 <Text className="mt-1 text-xs text-gray-400">
                                                     Saved {new Date(workflow.created_at).toLocaleDateString()}
                                                 </Text>

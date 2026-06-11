@@ -39,7 +39,50 @@ export const CANVAS_BG_OPTIONS = [
     { value: 'lines', label: 'Lines', description: 'A faint squared grid.' },
 ];
 
-export const TAG_OPTIONS = ['HR', 'Engineering', 'Finance', 'Operations', 'Design'];
+export const TAG_OPTIONS = [
+    'HR',
+    'Engineering',
+    'Finance',
+    'Operations',
+    'Design',
+    'Marketing',
+    'Sales',
+    'Legal',
+    'IT',
+    'Product',
+    'Customer Support',
+    'DevOps',
+    'Security',
+    'Procurement',
+    'Accounting',
+    'Research',
+    'Leadership',
+    'Admin',
+    'QA',
+];
+
+export const ANIMATION_SPEED_OPTIONS = [
+    { value: 'slow', label: 'Slow' },
+    { value: 'normal', label: 'Normal' },
+    { value: 'fast', label: 'Fast' },
+];
+
+export const TOAST_POSITION_OPTIONS = [
+    { value: 'bottom-right', label: 'Bottom Right' },
+    { value: 'bottom-left', label: 'Bottom Left' },
+    { value: 'top-right', label: 'Top Right' },
+    { value: 'top-left', label: 'Top Left' },
+];
+
+export const TOAST_DURATION_OPTIONS = [
+    { value: '2000', label: '2 seconds' },
+    { value: '3000', label: '3 seconds' },
+    { value: '5000', label: '5 seconds' },
+];
+
+// Multiplier applied to in-editor run animations (executor pacing + CSS speeds).
+// >1 is slower, <1 is faster.
+export const ANIMATION_SPEED_FACTORS = { slow: 1.8, normal: 1, fast: 0.5 };
 
 export const DEFAULT_SETTINGS = {
     accent: 'indigo',
@@ -47,6 +90,11 @@ export const DEFAULT_SETTINGS = {
     canvasBackground: 'dots',
     defaultTags: [],
     defaultNamePrefix: '',
+    animationSpeed: 'normal', // 'slow' | 'normal' | 'fast'
+    confirmNodeDelete: false, // confirm before deleting a node from the canvas
+    toastPosition: 'bottom-right', // 'bottom-right' | 'bottom-left' | 'top-right' | 'top-left'
+    toastDuration: '3000', // ms, as a string ('2000' | '3000' | '5000')
+    showStepCounts: true, // show "X steps · Y connections" on cards
 };
 
 /** Read the merged settings (defaults + stored overrides). Safe pre-mount. */
@@ -79,6 +127,17 @@ export function autoSaveIntervalMs(settings = getSettings()) {
     if (settings.autoSaveInterval === 'off') return null;
     const seconds = parseInt(settings.autoSaveInterval, 10);
     return Number.isFinite(seconds) ? seconds * 1000 : 30000;
+}
+
+/** Animation-speed multiplier (slow=1.8, normal=1, fast=0.5). */
+export function animationSpeedFactor(settings = getSettings()) {
+    return ANIMATION_SPEED_FACTORS[settings.animationSpeed] ?? 1;
+}
+
+/** Toast auto-dismiss duration in milliseconds. */
+export function toastDurationMs(settings = getSettings()) {
+    const ms = parseInt(settings.toastDuration, 10);
+    return Number.isFinite(ms) ? ms : 3000;
 }
 
 // ── Beginner-guide flag (shares Workflow.jsx's key) ────────────────────────

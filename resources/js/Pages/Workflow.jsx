@@ -1,7 +1,7 @@
 import { Head, router } from '@inertiajs/react';
 import { FlowEditor } from '@particle-academy/fancy-flow';
 import { useFlowRunnerUx } from '@particle-academy/fancy-flow/ux';
-import { Heading, Pillbox, Text, Toast, useToast } from '@particle-academy/react-fancy';
+import { Button, Heading, Pillbox, Text, Toast, useToast } from '@particle-academy/react-fancy';
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -18,6 +18,7 @@ import {
     Tags as TagsIcon,
     BookOpen,
     Settings as SettingsIcon,
+    Trash2,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import GradientDivider from '../Components/GradientDivider';
@@ -36,7 +37,7 @@ import UnsavedChangesModal from '../Components/UnsavedChangesModal';
 import ThemeToggle from '../Components/ThemeToggle';
 import Tooltip from '../Components/Tooltip';
 import { applyFriendlyNodeLabels } from '../lib/friendlyPalette';
-import { getSettings, autoSaveIntervalMs } from '../lib/settings';
+import { getSettings, autoSaveIntervalMs, animationSpeedFactor, toastDurationMs } from '../lib/settings';
 import '../../css/flow-animations.css';
 
 const templates = {
@@ -322,7 +323,14 @@ const GUIDE_SEEN_KEY = 'workflow-guide-seen';
 // telling a clear, human-readable story when Run is clicked.
 // ──────────────────────────────────────────────────────────────────────────
 
-const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+// Run-animation speed factor, set from the user's "Animation speed" setting when
+// the editor mounts. Scales every executor's `wait(…)` so a run actually plays
+// faster/slower. 1 = normal, >1 = slower, <1 = faster.
+let animSpeedFactor = 1;
+const setAnimSpeedFactor = (f) => {
+    animSpeedFactor = f;
+};
+const wait = (ms) => new Promise((r) => setTimeout(r, ms * animSpeedFactor));
 
 // Short pseudo-id helper for realistic-looking references (auth codes, tracking
 // numbers, ticket ids, etc.).
@@ -1805,9 +1813,6 @@ const SETTINGS_ACCENT_THEMES = {
     teal: { label: 'New Workflow', bar: 'bg-teal-500', badge: 'bg-teal-100 text-teal-700 ring-teal-200 dark:bg-teal-500/15 dark:text-teal-300 dark:ring-teal-500/30', button: 'teal', text: 'text-teal-600 dark:text-teal-400' },
 };
 
-// Quick-pick tags surfaced next to the tags input.
-const SUGGESTED_TAGS = ['HR', 'Engineering', 'Finance', 'Operations', 'Design'];
-
 function WorkflowEditor() {
     const params = new URLSearchParams(window.location.search);
     const type = params.get('type');
@@ -1823,7 +1828,9 @@ function WorkflowEditor() {
     const ux = useFlowRunnerUx({
         effects: {
             toast: ({ title = 'Notification', description, variant = 'default', duration } = {}) =>
-                toast({ title, description, variant, duration }),
+                // Default to the user's "Toast duration" setting (read fresh so it's
+                // always current) unless a specific duration was provided.
+                toast({ title, description, variant, duration: duration ?? toastDurationMs() }),
         },
         meta: {
             toast: { label: 'Toast', description: 'Show a toast notification.', icon: '🔔', category: 'output' },
@@ -1912,7 +1919,10 @@ function WorkflowEditor() {
     const markRunning = useCallback(() => {
         setRunning(true);
         if (stopTimer.current) clearTimeout(stopTimer.current);
-        stopTimer.current = setTimeout(() => setRunning(false), 3500);
+        // Scale the run-off watchdog with the animation-speed factor so a slow run
+        // doesn't stop the edge-flow animation prematurely (and a fast one stops
+        // promptly).
+        stopTimer.current = setTimeout(() => setRunning(false), 3500 * animSpeedFactor);
     }, []);
 
     const handleNodeStart = useCallback(
@@ -1967,6 +1977,15 @@ function WorkflowEditor() {
     const blankAccent = SETTINGS_ACCENT_THEMES[userSettings.accent] || neutralAccent;
     const accent = (effectiveType && accentThemes[effectiveType]) || blankAccent;
 
+    // Apply the "Animation speed" preference to the module-level run pacing.
+    useEffect(() => {
+        setAnimSpeedFactor(animationSpeedFactor(userSettings));
+    }, [userSettings]);
+
+    // A node-deletion awaiting confirmation when "Confirm before deleting nodes"
+    // is on: { next: <graph with the node removed>, removed: [<node>, …] }.
+    const [pendingNodeDelete, setPendingNodeDelete] = useState(null);
+
     // Template executors, each wrapped to fire its toast as it finishes, merged
     // with the UX effect executors (`ux_toast`) so hand-placed effect nodes run
     // too. Memoized so the registry keeps a stable identity across renders.
@@ -2006,9 +2025,6 @@ function WorkflowEditor() {
     const [isSaving, setIsSaving] = useState(false);
     const savingRef = useRef(false);
     const [autoSaveTick, setAutoSaveTick] = useState(0);
-
-    // Add a tag if not already present (used by the quick-pick buttons).
-    const addTag = (tag) => setTags((prev) => (prev.includes(tag) ? prev : [...prev, tag]));
 
     // FlowEditor runs in CONTROLLED mode (`value={graph}` + `onChange`), so the
     // canvas always reflects `graph` — that's what lets the config panel edit a
@@ -2101,11 +2117,32 @@ function WorkflowEditor() {
         commitTimerRef.current = setTimeout(commitHistory, 500);
     };
 
-    // The editor's onChange — keep the canvas controlled and feed history.
+    // The editor's onChange — keep the canvas controlled and feed history. When
+    // "Confirm before deleting nodes" is on and this change removes one or more
+    // nodes, we hold the change and pop a confirmation instead of applying it.
+    // Because the editor is controlled, not calling setGraph leaves the node(s)
+    // on the canvas until the user confirms.
     const onGraphChange = (g) => {
+        if (userSettings.confirmNodeDelete) {
+            const removed = graph.nodes.filter((n) => !g.nodes.some((gn) => gn.id === n.id));
+            if (removed.length > 0) {
+                setPendingNodeDelete({ next: g, removed });
+                return;
+            }
+        }
         setGraph(g);
         scheduleCommit(g);
     };
+
+    // Apply or cancel a held node deletion.
+    const confirmNodeDelete = () => {
+        if (!pendingNodeDelete) return;
+        const { next } = pendingNodeDelete;
+        setPendingNodeDelete(null);
+        setGraph(next);
+        scheduleCommit(next);
+    };
+    const cancelNodeDelete = () => setPendingNodeDelete(null);
 
     // Discard history (used on a wholesale graph swap: db load / import).
     const resetHistory = (g) => {
@@ -2447,23 +2484,28 @@ function WorkflowEditor() {
         return () => window.removeEventListener('beforeunload', handler);
     }, [hasUnsavedWork]);
 
-    // Tags editor (Pillbox + quick-pick chips). Defined once and placed in both
-    // the lg brand column and the md/sm bottom row.
+    // react-fancy's Pillbox commits a tag on Enter (and removes the last on
+    // Backspace, or a specific one via its X). It doesn't treat comma as a
+    // separator, so we add that: intercept a comma keypress in the input and
+    // re-fire it as Enter, which makes the Pillbox commit the typed text.
+    const handleTagsKeyDown = (e) => {
+        if (e.key === ',' && e.target instanceof HTMLInputElement) {
+            e.preventDefault();
+            e.target.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+        }
+    };
+
+    // Tags editor — a Pillbox where users type their own tags (Enter or comma to
+    // add, click the X to remove). Defined once and placed in both the lg brand
+    // column and the md/sm bottom row.
     const tagsEditor = (
-        <div className="flex min-w-0 flex-wrap items-center gap-2">
-            <Pillbox value={tags} onChange={setTags} placeholder="Add tags…" className="min-w-44 py-1 text-sm sm:min-w-56" />
-            <div className="hidden flex-wrap items-center gap-1.5 sm:flex">
-                {SUGGESTED_TAGS.filter((t) => !tags.includes(t)).map((t) => (
-                    <button
-                        key={t}
-                        type="button"
-                        onClick={() => addTag(t)}
-                        className="rounded-full border border-dashed border-gray-300 px-2.5 py-0.5 text-xs font-medium text-gray-500 transition-colors hover:border-gray-400 hover:bg-gray-100 dark:border-gray-700 dark:text-gray-400 dark:hover:bg-gray-800"
-                    >
-                        + {t}
-                    </button>
-                ))}
-            </div>
+        <div className="min-w-0" onKeyDown={handleTagsKeyDown}>
+            <Pillbox
+                value={tags}
+                onChange={setTags}
+                placeholder="Add tags… e.g. HR, Design"
+                className="min-w-44 py-1 text-sm sm:min-w-56"
+            />
         </div>
     );
 
@@ -2474,18 +2516,18 @@ function WorkflowEditor() {
             <div className="flex min-h-screen flex-col bg-gray-50 dark:bg-gray-950">
                 {/* Accent banner showing which template is active. transition-colors
                     so the bar eases between accents when switching templates. */}
-                <div className={`h-1.5 w-full transition-colors duration-200 ${accent.bar}`} />
+                <div className={`h-1 w-full transition-colors duration-200 ${accent.bar}`} />
                 {/* Responsive header: one row on lg, two stacked rows on md and below.
                     Top row = brand + nav; bottom row = tags + status + actions. Tags
                     and nav are placed twice (CSS-toggled per breakpoint); the heavy
                     action toolbar is a single instance shared by all layouts. */}
-                <header className="sticky top-0 z-50 flex flex-col gap-2 border-b border-gray-200/60 bg-white/70 px-4 py-3 backdrop-blur-md transition-colors duration-300 dark:border-gray-800/60 dark:bg-gray-900/70 lg:flex-row lg:items-center lg:justify-between lg:gap-3 lg:px-6 lg:py-4">
+                <header className="sticky top-0 z-50 flex flex-col gap-1.5 border-b border-gray-200/60 bg-white/70 px-4 py-2 backdrop-blur-md transition-colors duration-300 supports-[backdrop-filter]:bg-white/60 dark:border-gray-800/60 dark:bg-gray-900/70 dark:supports-[backdrop-filter]:bg-gray-900/60 lg:flex-row lg:items-center lg:justify-between lg:gap-3 lg:px-6 lg:py-2.5">
                     {/* ── Row 1 (on lg: the left side) ─────────────────────────── */}
                     <div className="flex min-w-0 items-center justify-between gap-2 lg:flex-1 lg:justify-start lg:gap-3">
                         {/* Brand: logo + name + description (md+) + tags (lg) */}
                         <div className="flex min-w-0 items-center gap-2 lg:items-start lg:gap-3">
                             <Logo className="shrink-0 text-indigo-600 dark:text-indigo-400" />
-                            <div className="flex min-w-0 flex-col gap-0.5 lg:gap-1">
+                            <div className="flex min-w-0 flex-col gap-0.5">
                                 <motion.span
                                     initial={{ opacity: 0, y: -4 }}
                                     animate={{ opacity: 1, y: 0 }}
@@ -2499,14 +2541,15 @@ function WorkflowEditor() {
                                     value={name}
                                     onChange={(e) => setName(e.target.value)}
                                     placeholder="Workflow name..."
-                                    className="w-full min-w-0 border-none bg-transparent text-base font-semibold text-gray-900 outline-none placeholder-gray-400 dark:text-white lg:min-w-96 lg:text-xl"
+                                    className="w-full min-w-0 border-none bg-transparent text-base font-semibold leading-tight text-gray-900 outline-none placeholder-gray-400 dark:text-white lg:min-w-96 lg:text-lg"
                                 />
-                                {/* Inline-editable description — hidden on small screens, shown md+. */}
-                                <div className="hidden md:block">
+                                {/* Inline-editable description — hidden until lg so the header
+                                    stays compact on small screens and when zoomed in. */}
+                                <div className="hidden lg:block">
                                     <DescriptionField value={description} onChange={setDescription} />
                                 </div>
                                 {/* Tags under the brand — lg only (md/sm show them in row 2). */}
-                                <div className="mt-1 hidden lg:block">{tagsEditor}</div>
+                                <div className="mt-0.5 hidden lg:block">{tagsEditor}</div>
                             </div>
                         </div>
 
@@ -2709,6 +2752,7 @@ function WorkflowEditor() {
                     <div
                         ref={editorBoxRef}
                         data-canvas-bg={userSettings.canvasBackground}
+                        data-anim-speed={userSettings.animationSpeed}
                         className={`workflow-editor relative ${running ? 'flow-running' : ''}`}
                     >
                         {/* Pulse the just-dropped node's ports. Injected as a rule keyed on
@@ -2865,15 +2909,68 @@ function WorkflowEditor() {
                 onLeave={handleLeaveWithout}
                 onCancel={() => setPendingNav(null)}
             />
+
+            {/* Confirm before deleting a step (when the setting is enabled). */}
+            <AnimatePresence>
+                {pendingNodeDelete && (
+                    <motion.div
+                        className="fixed inset-0 z-[60] flex items-center justify-center p-4"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        transition={{ duration: 0.2 }}
+                    >
+                        <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={cancelNodeDelete} aria-hidden="true" />
+                        <motion.div
+                            role="dialog"
+                            aria-modal="true"
+                            aria-labelledby="delete-node-title"
+                            className="relative z-10 w-full max-w-md rounded-2xl border border-gray-200 bg-white p-6 shadow-xl dark:border-gray-800 dark:bg-gray-900"
+                            initial={{ opacity: 0, scale: 0.95, y: 12 }}
+                            animate={{ opacity: 1, scale: 1, y: 0 }}
+                            exit={{ opacity: 0, scale: 0.95, y: 12 }}
+                            transition={{ type: 'spring', stiffness: 320, damping: 26 }}
+                        >
+                            <div className="flex items-start gap-4">
+                                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-red-100 text-red-600 dark:bg-red-500/15 dark:text-red-400">
+                                    <Trash2 size={20} aria-hidden="true" />
+                                </div>
+                                <div className="flex-1">
+                                    <Heading as="h2" id="delete-node-title" size="lg" weight="semibold">
+                                        {pendingNodeDelete.removed.length > 1
+                                            ? `Delete ${pendingNodeDelete.removed.length} steps?`
+                                            : 'Delete this step?'}
+                                    </Heading>
+                                    <Text className="mt-2 text-sm text-gray-500 dark:text-gray-400">
+                                        {pendingNodeDelete.removed.length === 1 && pendingNodeDelete.removed[0].data?.label
+                                            ? `“${pendingNodeDelete.removed[0].data.label}” and its connections will be removed.`
+                                            : 'The selected steps and their connections will be removed.'}
+                                    </Text>
+                                </div>
+                            </div>
+                            <div className="mt-6 flex justify-end gap-3">
+                                <Button variant="outline" color="gray" onClick={cancelNodeDelete}>
+                                    Cancel
+                                </Button>
+                                <Button variant="primary" color="red" onClick={confirmNodeDelete}>
+                                    Delete
+                                </Button>
+                            </div>
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
         </>
     );
 }
 
 // Wrap the editor in the Toast provider so `useToast` (and therefore the flow's
-// `toast` UX effect) can render notifications.
+// `toast` UX effect) can render notifications. The corner is the user's
+// "Toast position" preference, read from localStorage at mount.
 export default function Workflow() {
+    const toastPosition = getSettings().toastPosition;
     return (
-        <Toast.Provider position="bottom-right">
+        <Toast.Provider position={toastPosition}>
             <WorkflowEditor />
         </Toast.Provider>
     );
