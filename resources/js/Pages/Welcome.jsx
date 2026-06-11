@@ -34,6 +34,12 @@ export default function Welcome() {
                     </div>
                     <div className="flex items-center gap-2">
                         <Link
+                            href="/about"
+                            className="hidden rounded-full px-3 py-1.5 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-100/80 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-gray-800/80 dark:hover:text-white sm:inline-flex"
+                        >
+                            About
+                        </Link>
+                        <Link
                             href="/settings"
                             aria-label="Settings"
                             title="Settings"
@@ -127,6 +133,12 @@ export default function Welcome() {
                     <Text className="text-sm text-gray-500 dark:text-gray-400">
                         Fancy Workflows — automate anything, visually. Built with Laravel, Inertia &amp; React.
                     </Text>
+                    <Link
+                        href="/about"
+                        className="mt-3 inline-flex text-sm font-medium text-indigo-600 transition-colors hover:text-indigo-500 dark:text-indigo-400"
+                    >
+                        About this app
+                    </Link>
                 </footer>
             </div>
         </>

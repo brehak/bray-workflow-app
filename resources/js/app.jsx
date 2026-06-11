@@ -25,18 +25,27 @@ const pageTransition = {
     ease: 'easeInOut',
 };
 
-function PageWrapper({ children }) {
+// Animates the current page in/out. We use Inertia's `App` render-prop so React
+// owns the page's mount/unmount lifecycle and AnimatePresence has a real keyed
+// child to track. Keying on Inertia's per-visit `key` is essential: it's what
+// tells AnimatePresence a navigation happened so it can run exit→enter cleanly.
+//
+// (Do NOT wrap the whole <App> in <AnimatePresence> instead — Inertia swaps the
+// page DOM out-of-band, and AnimatePresence's exit animation then runs against
+// nodes that no longer exist, throwing insertBefore/removeChild NotFoundErrors
+// that unmount the root and leave a blank screen.)
+function AnimatedPage({ Component, props, pageKey }) {
     return (
-        <AnimatePresence mode="wait">
+        <AnimatePresence mode="wait" initial={false}>
             <motion.div
-                key={window.location.pathname}
+                key={pageKey}
                 variants={pageVariants}
                 initial="initial"
                 animate="animate"
                 exit="exit"
                 transition={pageTransition}
             >
-                {children}
+                <Component {...props} />
             </motion.div>
         </AnimatePresence>
     );
@@ -48,7 +57,11 @@ function Root({ App, props }) {
     return (
         <>
             <NavigationProgress />
-            <PageWrapper>{createElement(App, props)}</PageWrapper>
+            <App {...props}>
+                {({ Component, props: pageProps, key }) => (
+                    <AnimatedPage Component={Component} props={pageProps} pageKey={key} />
+                )}
+            </App>
         </>
     );
 }
@@ -64,6 +77,13 @@ createInertiaApp({
             import.meta.glob('./Pages/**/*.jsx'),
         ),
     setup({ el, App, props }) {
-        createRoot(el).render(createElement(Root, { App, props }));
+        // This entry module also defines React components (Root, AnimatedPage),
+        // so Vite's React Fast Refresh treats it as a hot-update boundary and can
+        // re-execute it during dev. Calling createRoot() again on the same #app
+        // would mount a SECOND React tree; the two roots then fight over the DOM
+        // on the next navigation and blank the screen. Reusing the root makes the
+        // mount idempotent — a re-exec just re-renders into the existing root.
+        const root = (el._inertiaRoot ??= createRoot(el));
+        root.render(createElement(Root, { App, props }));
     },
 });
