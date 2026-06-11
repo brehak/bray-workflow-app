@@ -1,58 +1,155 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+<h1 align="center">Fancy Workflows</h1>
 
 <p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
+  <strong>Build it once. Run it forever.</strong><br>
+  A visual, no-code workflow builder — map out how your work gets done, then watch it run.
 </p>
 
-## About Laravel
+<p align="center">
+  <img src="https://img.shields.io/badge/Laravel-13.x-FF2D20?style=flat&logo=laravel&logoColor=white" alt="Laravel">
+  <img src="https://img.shields.io/badge/React-19-61DAFB?style=flat&logo=react&logoColor=black" alt="React">
+  <img src="https://img.shields.io/badge/Inertia.js-3.x-9553E9?style=flat&logo=inertia&logoColor=white" alt="Inertia.js">
+  <img src="https://img.shields.io/badge/Tailwind_CSS-4.x-38BDF8?style=flat&logo=tailwindcss&logoColor=white" alt="Tailwind CSS">
+  <img src="https://img.shields.io/badge/License-MIT-22c55e?style=flat" alt="License: MIT">
+</p>
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+---
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+## 📸 Screenshot
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+> _**Add screenshot here** — drop an image of the workflow editor (e.g. `docs/screenshot.png`) and reference it below._
+>
+> ```markdown
+> ![Fancy Workflows](docs/screenshot.png)
+> ```
 
-## Learning Laravel
+---
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework.
+## About
 
-In addition, [Laracasts](https://laracasts.com) contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+**Fancy Workflows** is a visual builder for designing business processes and watching them run. Drag steps onto an infinite canvas, connect them into a flow, and run a live simulation that walks through each stage with a real-time run feed. Start from one of ten ready-made templates covering common real-world processes — onboarding, order processing, approvals and more — or build your own from scratch.
 
-You can also watch bite-sized lessons with real-world projects on [Laravel Learn](https://laravel.com/learn), where you will be guided through building a Laravel application from scratch while learning PHP fundamentals.
+It's a **showcase application for [Fancy UI](https://ui.particle.academy) by Particle Academy**, built to demonstrate what a polished, production-feeling product looks like when assembled from the [`react-fancy`](https://ui.particle.academy) component library and the [`fancy-flow`](https://ui.particle.academy) node-based canvas. Every screen — the glassmorphism header, the gradient hero, the editor, the settings page — leans on these packages to stay cohesive and accessible across light and dark mode.
 
-## Agentic Development
+Under the hood it's a modern **Laravel + Inertia + React** single-page app: Laravel persists workflows and serves the pages, Inertia bridges the back end and front end without a separate API, and React (with Framer Motion) handles the interactive editor and animations. The result is a fast, fluid demo that feels like a real SaaS tool while remaining a clean, approachable codebase.
 
-Laravel's predictable structure and conventions make it ideal for AI coding agents like Claude Code, Cursor, and GitHub Copilot. Install [Laravel Boost](https://laravel.com/docs/ai) to supercharge your AI workflow:
+---
+
+## Features
+
+- 🗂️ **10 ready-made templates** — real-world business processes you can run or remix.
+- 🎨 **Visual workflow editor** — drag-and-drop nodes and connections on an infinite canvas, powered by `fancy-flow`.
+- ▶️ **Live run simulation** — execute a workflow and watch each step play out in a step-by-step run feed.
+- 🕘 **Run history** — revisit past runs in a collapsible panel to see exactly what happened.
+- 💾 **Save & load** — workflows are persisted to the database and reopened anytime.
+- 📤 **Export & import** — download a workflow as JSON, or import one back in.
+- 🗜️ **Bulk export** — bundle every saved workflow into a single ZIP from Settings.
+- ↩️ **Undo / redo** — full edit history with keyboard support.
+- ⚡ **Auto-save** — changes are saved as you work, with a live save-status indicator.
+- 🌗 **Dark & light mode** — a theme that follows your system preference or your choice.
+- ⌨️ **Keyboard shortcuts** — move fast with shortcuts for the actions you reach for most.
+- 🎓 **Guided onboarding** — a step-by-step beginner guide gets newcomers building in minutes.
+
+---
+
+## Tech Stack
+
+| Package | Version | Role |
+| --- | --- | --- |
+| [Laravel](https://laravel.com) | `^13.8` | Back-end framework — routing, persistence, page rendering |
+| [PHP](https://www.php.net) | `^8.3` | Server-side language |
+| [Inertia.js (Laravel)](https://inertiajs.com) | `^3.1` | Server-side adapter bridging Laravel and React |
+| [Laravel Tinker](https://github.com/laravel/tinker) | `^3.0` | REPL for the application |
+| [React](https://react.dev) | `^19.2` | Front-end UI library |
+| [Inertia.js (React)](https://inertiajs.com) | `^3.3` | Client-side adapter — SPA navigation without an API |
+| [react-fancy](https://ui.particle.academy) | `^4.4` | Particle Academy UI component library |
+| [fancy-flow](https://ui.particle.academy) | `^0.5` | Particle Academy node-based workflow canvas |
+| [Framer Motion](https://www.framer.com/motion/) | `^12.40` | Animations and transitions |
+| [Tailwind CSS](https://tailwindcss.com) | `^4.0` | Utility-first styling |
+| [Lucide React](https://lucide.dev) | `^1.17` | Icon set |
+| [canvas-confetti](https://github.com/catdad/canvas-confetti) | `^1.9` | Celebratory confetti effects |
+| [Vite](https://vite.dev) | `^8.0` | Front-end build tool and dev server |
+
+---
+
+## Getting Started
+
+### Prerequisites
+
+- **PHP 8.3+** and **Composer**
+- **Node.js 18+** and **npm**
+
+### Installation
 
 ```bash
-composer require laravel/boost --dev
+# 1. Clone the repository
+git clone <your-repo-url> fancy-workflows
+cd fancy-workflows
 
-php artisan boost:install
+# 2. Install PHP dependencies
+composer install
+
+# 3. Create your environment file
+cp .env.example .env
+
+# 4. Generate the application key
+php artisan key:generate
+
+# 5. Run database migrations
+php artisan migrate
+
+# 6. Install JavaScript dependencies
+npm install
 ```
 
-Boost provides your agent 15+ tools and skills that help agents build Laravel applications while following best practices.
+### Running locally
 
-## Contributing
+The app needs the Vite dev server and the Laravel server running at the same time, in **two separate terminals**:
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+```bash
+# Terminal 1 — front-end dev server (hot reload)
+npm run dev
+```
 
-## Code of Conduct
+```bash
+# Terminal 2 — Laravel application server
+php artisan serve
+```
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+Then open the URL printed by `php artisan serve` (by default <http://localhost:8000>).
 
-## Security Vulnerabilities
+---
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+## Templates
+
+Fancy Workflows ships with **10** ready-to-run templates covering common business processes:
+
+| # | Template | Description |
+| --- | --- | --- |
+| 1 | **Employee Onboarding** | Automate the full onboarding process for new hires — accounts, tools, training and more. |
+| 2 | **Order Processing** | Walk an order through the full fulfillment pipeline — payment, inventory, shipping and delivery. |
+| 3 | **Bug Report** | Triage incoming bug reports, assign to the right developer, track fixes and close issues. |
+| 4 | **Job Application Pipeline** | Screen applicants, run phone and technical interviews, then route strong candidates to an offer. |
+| 5 | **Content Publishing** | Take a draft through editorial review and SEO checks, then schedule and publish it. |
+| 6 | **Budget Approval** | Validate a spend request, run department review, then route it to manager or executive approval. |
+| 7 | **PTO Request** | Check team coverage, get manager approval, update the calendar, and notify the team. |
+| 8 | **Product Recall** | Assess a product issue, notify regulators if needed, alert customers, and process returns. |
+| 9 | **Event Planning** | Book a venue, send invites, confirm arrangements once RSVPs clear, then run the day-of checklist and follow up. |
+| 10 | **Return & Refund** | Verify a purchase, inspect the return, then process or deny the refund and close the case. |
+
+---
+
+## Built With Fancy UI
+
+Fancy Workflows is a showcase for **[Fancy UI](https://ui.particle.academy) by [Particle Academy](https://ui.particle.academy)** — a design system for building beautiful, accessible React interfaces fast.
+
+- **[`react-fancy`](https://ui.particle.academy)** — the component library powering every button, heading, badge, input and switch in the app.
+- **[`fancy-flow`](https://ui.particle.academy)** — the node-based canvas that powers the visual workflow editor.
+
+If you like what you see here, explore the full toolkit at **[ui.particle.academy](https://ui.particle.academy)**.
+
+---
 
 ## License
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+Released under the [MIT License](https://opensource.org/licenses/MIT).
