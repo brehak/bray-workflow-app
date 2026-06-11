@@ -21,7 +21,7 @@ const stagger = {
 export default function Welcome() {
     return (
         <>
-            <Head title="Fancy Workflows" />
+            <Head title="Fancy Workflows — Build it once." />
 
             <div className="flex min-h-screen flex-col bg-gray-50 bg-[radial-gradient(ellipse_80%_50%_at_50%_-10%,rgba(59,130,246,0.08),transparent_70%)] transition-colors duration-300 dark:bg-gray-950 dark:bg-[radial-gradient(ellipse_80%_50%_at_50%_-10%,rgba(99,102,241,0.15),transparent_70%)]">
                 {/* Navigation */}
@@ -105,7 +105,7 @@ export default function Welcome() {
                                             <span className="inline-flex items-center gap-2.5">
                                                 Browse Templates &amp; Workflows
                                                 <span className="rounded-full bg-white/20 px-2 py-0.5 text-[11px] font-semibold leading-none text-white">
-                                                    10 templates
+                                                    11 templates
                                                 </span>
                                             </span>
                                         </Button>

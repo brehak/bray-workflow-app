@@ -147,7 +147,7 @@ export default function Settings({ workflows = [] }) {
 
     return (
         <>
-            <Head title="Settings" />
+            <Head title="Settings — Fancy Workflows" />
 
             <div className="flex min-h-screen flex-col bg-gray-50 dark:bg-gray-950">
                 {/* Glassmorphism header — matches the rest of the app. */}

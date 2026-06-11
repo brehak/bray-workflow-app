@@ -189,7 +189,7 @@ export default function WorkflowList({ workflows }) {
 
     return (
         <>
-            <Head title="Saved Workflows" />
+            <Head title="Templates & Workflows — Fancy Workflows" />
 
             <div className="flex min-h-screen flex-col bg-gray-50 dark:bg-gray-950">
                 <header className="sticky top-0 z-50 border-b border-gray-200/60 bg-white/70 px-6 py-4 backdrop-blur-md transition-colors duration-300 dark:border-gray-800/60 dark:bg-gray-900/70">
@@ -310,8 +310,9 @@ export default function WorkflowList({ workflows }) {
                     </div>
                     {workflows.length === 0 ? (
                         <div className="flex flex-col items-center justify-center py-12 text-center rounded-xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900">
-                            <Text className="text-gray-500">Nothing here yet.</Text>
-                            <Text className="text-sm text-gray-400 mt-1">Open a template, make it your own, and save it to see it here.</Text>
+                            <Text className="text-gray-600 dark:text-gray-300">
+                                Your saved workflows will appear here — start by launching a template above!
+                            </Text>
                         </div>
                     ) : (
                         <>

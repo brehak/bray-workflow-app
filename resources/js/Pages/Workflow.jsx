@@ -12,6 +12,7 @@ import {
     Upload,
     Undo2,
     Redo2,
+    Check,
     History,
     Home,
     FolderOpen,
@@ -2026,6 +2027,12 @@ function WorkflowEditor() {
     const savingRef = useRef(false);
     const [autoSaveTick, setAutoSaveTick] = useState(0);
 
+    // Brief "Saved!" confirmation shown on the Save button after a successful
+    // manual save; clears itself after 2s. framer-motion animates the swap.
+    const [justSaved, setJustSaved] = useState(false);
+    const justSavedTimerRef = useRef(null);
+    useEffect(() => () => clearTimeout(justSavedTimerRef.current), []);
+
     // FlowEditor runs in CONTROLLED mode (`value={graph}` + `onChange`), so the
     // canvas always reflects `graph` — that's what lets the config panel edit a
     // node and have the change show up live. A wholesale replacement (import)
@@ -2413,8 +2420,14 @@ function WorkflowEditor() {
     // Manual Save — same behaviour as before, plus it restarts the auto-save
     // countdown so the next auto-save is a full 30s away.
     const saveWorkflow = async () => {
-        await persist(false);
+        const ok = await persist(false);
         setAutoSaveTick((t) => t + 1);
+        if (ok) {
+            // Flash the green "Saved!" confirmation on the button for 2s.
+            clearTimeout(justSavedTimerRef.current);
+            setJustSaved(true);
+            justSavedTimerRef.current = setTimeout(() => setJustSaved(false), 2000);
+        }
     };
 
     // Wire the keyboard shortcuts to the latest handlers (see the listener above).
@@ -2511,7 +2524,7 @@ function WorkflowEditor() {
 
     return (
         <>
-            <Head title={name || 'New Workflow'} />
+            <Head title={`${name || 'New Workflow'} — Fancy Workflows`} />
 
             <div className="flex min-h-screen flex-col bg-gray-50 dark:bg-gray-950">
                 {/* Accent banner showing which template is active. transition-colors
@@ -2614,13 +2627,10 @@ function WorkflowEditor() {
                             <div className={`min-w-0 md:block ${tagsOpen ? 'block' : 'hidden'}`}>{tagsEditor}</div>
                         </div>
 
-                        {/* Status indicator + action toolbar + nav (lg). */}
-                        <div className="flex shrink-0 items-center gap-2">
-                            {graph.nodes.length > 0 && <SaveStatusIndicator state={saveState} />}
-                            {status && (
-                                <Text className="hidden text-xs text-gray-400 dark:text-gray-500 md:inline">{status}</Text>
-                            )}
-
+                        {/* Action toolbar + nav on the top line; the save-status indicator
+                            wraps onto its own line beneath them (lg) so it sits in the
+                            header's lower-right corner instead of beside undo/redo. */}
+                        <div className="flex shrink-0 items-center gap-2 lg:flex-wrap lg:justify-end">
                             {/* Floating glass toolbar: Undo · Redo · Save · Export · Import · History.
                                 Labels show only on lg; below lg they're icon-only (with tooltips). */}
                             <motion.div
@@ -2655,14 +2665,41 @@ function WorkflowEditor() {
 
                                 <span className="mx-0.5 h-5 w-px bg-gray-300/70 dark:bg-gray-600/50" aria-hidden="true" />
 
-                                <Tooltip label="Save Workflow" placement="bottom">
+                                <Tooltip label={justSaved ? 'Saved!' : 'Save Workflow'} placement="bottom">
                                     <button
                                         type="button"
                                         onClick={saveWorkflow}
-                                        className={`inline-flex items-center gap-2 rounded-full px-2 py-1.5 text-sm font-semibold transition-colors hover:bg-black/5 dark:hover:bg-white/10 lg:px-3 ${accent.text}`}
+                                        aria-label={justSaved ? 'Workflow saved' : 'Save workflow'}
+                                        className={`inline-flex items-center gap-2 rounded-full px-2 py-1.5 text-sm font-semibold transition-colors hover:bg-black/5 dark:hover:bg-white/10 lg:px-3 ${justSaved ? 'text-green-600 dark:text-green-400' : accent.text}`}
                                     >
-                                        <Save size={16} aria-hidden="true" />
-                                        <span className="hidden lg:inline">Save</span>
+                                        {/* Swap Save ⇄ Saved! with a smooth fade/scale on success. */}
+                                        <AnimatePresence mode="wait" initial={false}>
+                                            {justSaved ? (
+                                                <motion.span
+                                                    key="saved"
+                                                    initial={{ opacity: 0, scale: 0.6 }}
+                                                    animate={{ opacity: 1, scale: 1 }}
+                                                    exit={{ opacity: 0, scale: 0.6 }}
+                                                    transition={{ duration: 0.18, ease: 'easeOut' }}
+                                                    className="inline-flex items-center gap-2"
+                                                >
+                                                    <Check size={16} aria-hidden="true" />
+                                                    <span className="hidden lg:inline">Saved!</span>
+                                                </motion.span>
+                                            ) : (
+                                                <motion.span
+                                                    key="save"
+                                                    initial={{ opacity: 0, scale: 0.6 }}
+                                                    animate={{ opacity: 1, scale: 1 }}
+                                                    exit={{ opacity: 0, scale: 0.6 }}
+                                                    transition={{ duration: 0.18, ease: 'easeOut' }}
+                                                    className="inline-flex items-center gap-2"
+                                                >
+                                                    <Save size={16} aria-hidden="true" />
+                                                    <span className="hidden lg:inline">Save</span>
+                                                </motion.span>
+                                            )}
+                                        </AnimatePresence>
                                     </button>
                                 </Tooltip>
 
@@ -2670,6 +2707,7 @@ function WorkflowEditor() {
                                     <button
                                         type="button"
                                         onClick={exportJson}
+                                        aria-label="Export workflow as JSON"
                                         className="inline-flex items-center gap-2 rounded-full px-2 py-1.5 text-sm font-medium text-gray-700 transition-colors hover:bg-black/5 dark:text-gray-200 dark:hover:bg-white/10 lg:px-3"
                                     >
                                         <Download size={16} aria-hidden="true" />
@@ -2681,6 +2719,7 @@ function WorkflowEditor() {
                                     <button
                                         type="button"
                                         onClick={importJson}
+                                        aria-label="Import workflow from JSON"
                                         className="inline-flex items-center gap-2 rounded-full px-2 py-1.5 text-sm font-medium text-gray-700 transition-colors hover:bg-black/5 dark:text-gray-200 dark:hover:bg-white/10 lg:px-3"
                                     >
                                         <Upload size={16} aria-hidden="true" />
@@ -2695,6 +2734,7 @@ function WorkflowEditor() {
                                         type="button"
                                         onClick={() => setShowHistory((v) => !v)}
                                         aria-pressed={showHistory}
+                                        aria-label="Toggle run history"
                                         className={`inline-flex items-center gap-2 rounded-full px-2 py-1.5 text-sm font-medium transition-colors hover:bg-black/5 dark:hover:bg-white/10 lg:px-3 ${showHistory ? 'text-indigo-600 dark:text-indigo-400' : 'text-gray-700 dark:text-gray-200'}`}
                                     >
                                         <History size={16} aria-hidden="true" />
@@ -2708,6 +2748,7 @@ function WorkflowEditor() {
                                     <button
                                         type="button"
                                         onClick={() => setShowGuide(true)}
+                                        aria-label="Open beginner's guide"
                                         className="inline-flex items-center gap-2 rounded-full px-2 py-1.5 text-sm font-medium text-gray-700 transition-colors hover:bg-black/5 dark:text-gray-200 dark:hover:bg-white/10 lg:px-3"
                                     >
                                         <BookOpen size={16} aria-hidden="true" />
@@ -2738,6 +2779,18 @@ function WorkflowEditor() {
                                     <NavButton onClick={() => guardedNavigate('/')}>Back home</NavButton>
                                 </Tooltip>
                             </div>
+
+                            {/* Save-status — on lg, `basis-full` forces it onto its own line
+                                and `justify-end` right-aligns it, so it sits neatly beneath the
+                                nav buttons in the header's lower-right corner. */}
+                            {(graph.nodes.length > 0 || status) && (
+                                <div className="flex items-center gap-2 lg:basis-full lg:justify-end">
+                                    {graph.nodes.length > 0 && <SaveStatusIndicator state={saveState} />}
+                                    {status && (
+                                        <Text className="hidden text-xs text-gray-400 dark:text-gray-500 md:inline">{status}</Text>
+                                    )}
+                                </div>
+                            )}
                         </div>
                     </div>
                 </header>

@@ -18,6 +18,41 @@
 }
 
 /* ---------------------------------------------------------------------------
+   Keyboard focus rings (accessibility)
+   ---------------------------------------------------------------------------
+   A single, consistent accent ring on every interactive element when reached
+   by keyboard (`:focus-visible` only, so it never shows on a mouse click). Drawn
+   with `outline` + `outline-offset`: it doesn't shift layout and modern browsers
+   automatically round it to follow each element's own border-radius (pills,
+   rounded-full icon buttons, etc.). The accent matches the app's
+   blue→indigo→purple palette (indigo-500), lightened in dark mode for contrast. */
+@layer base {
+    :root {
+        --focus-ring: theme(colors.indigo.500);
+    }
+    .dark {
+        --focus-ring: theme(colors.indigo.400);
+    }
+
+    a:focus-visible,
+    button:focus-visible,
+    input:focus-visible,
+    textarea:focus-visible,
+    select:focus-visible,
+    summary:focus-visible,
+    [role='button']:focus-visible,
+    [role='switch']:focus-visible,
+    [role='tab']:focus-visible,
+    [role='menuitem']:focus-visible,
+    [role='link']:focus-visible,
+    [contenteditable]:focus-visible,
+    [tabindex]:focus-visible {
+        outline: 2px solid var(--focus-ring);
+        outline-offset: 2px;
+    }
+}
+
+/* ---------------------------------------------------------------------------
    Smooth color transitions
    ---------------------------------------------------------------------------
    Animate the three "theme" properties — background, border, and text color —

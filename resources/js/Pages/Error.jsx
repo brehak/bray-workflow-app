@@ -126,16 +126,27 @@ function BrokenWorkflow() {
     );
 }
 
+// Concise, human-readable browser-tab titles per status (the on-page MESSAGES
+// titles are full sentences, too long for a tab).
+const TAB_TITLES = {
+    404: 'Page Not Found',
+    500: 'Server Error',
+    503: 'Under Maintenance',
+    403: 'Access Denied',
+    419: 'Page Expired',
+};
+
 export default function Error({ status = 404 }) {
     const info = MESSAGES[status] ?? {
         badge: `Error ${status}`,
         title: 'Something went wrong',
         subtitle: 'An unexpected error occurred. Please try again.',
     };
+    const tabTitle = TAB_TITLES[status] ?? `Error ${status}`;
 
     return (
         <>
-            <Head title={`${status} — Fancy Workflows`} />
+            <Head title={`${tabTitle} — Fancy Workflows`} />
 
             <div className="flex min-h-screen flex-col bg-gray-50 bg-[radial-gradient(ellipse_80%_50%_at_50%_-10%,rgba(59,130,246,0.08),transparent_70%)] transition-colors duration-300 dark:bg-gray-950 dark:bg-[radial-gradient(ellipse_80%_50%_at_50%_-10%,rgba(99,102,241,0.15),transparent_70%)]">
                 {/* Navigation — matches the rest of the app (glassmorphism + brand + theme). */}
