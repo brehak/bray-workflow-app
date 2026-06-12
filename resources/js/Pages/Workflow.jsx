@@ -341,6 +341,85 @@ const rid = (prefix = '', len = 6) =>
 const say = (emit, node, level, message) =>
     emit({ type: 'log', nodeId: node.id, level, message });
 
+// ── Agentic node execution (AI Mode) ──────────────────────────────────────
+// When AI Mode is on (server reports ANTHROPIC_API_KEY is configured), ACTION
+// nodes route through the Laravel /api/agent/node endpoint so Claude reasons
+// through the step. Everything else — triggers, decisions, outputs, Demo Mode,
+// and any failed request — runs the existing hardcoded mock executors, so the
+// workflow behaves identically when AI is off. These module-level flags are set
+// from the component (same pattern as `animSpeedFactor`) so the wrapped
+// executors stay stable across renders while reading live values at run time.
+let aiModeEnabled = false;
+let currentWorkflowName = 'Workflow';
+const setAiModeEnabled = (v) => {
+    aiModeEnabled = !!v;
+};
+const setCurrentWorkflowName = (n) => {
+    currentWorkflowName = n || 'Workflow';
+};
+
+const csrfToken = () => document.querySelector('meta[name="csrf-token"]')?.content ?? '';
+
+// POST a single node to the agent endpoint. Throws on any non-OK response (or
+// network error) so the caller can fall back to mock data.
+async function postAgentNode({ nodeType, nodeLabel, workflowName, inputData }) {
+    const res = await fetch('/api/agent/node', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            Accept: 'application/json',
+            'X-CSRF-TOKEN': csrfToken(),
+        },
+        body: JSON.stringify({
+            node_type: nodeType,
+            node_label: nodeLabel,
+            workflow_name: workflowName,
+            input_data: inputData,
+        }),
+    });
+    if (!res.ok) throw new Error(`agent/node HTTP ${res.status}`);
+    return res.json();
+}
+
+// Wrap one executor so that — for ACTION nodes only, and only in AI Mode — it
+// asks Claude what should happen at the step, then narrates that in the run feed
+// and attaches the AI's structured output. Any failure (no key, network, 4xx/5xx,
+// bad JSON) transparently falls back to `fallback` — the node's original mock
+// executor — so the run continues exactly as in Demo Mode.
+async function runAgentNode(ctx, fallback) {
+    const { node, inputs, emit } = ctx;
+
+    // Non-action nodes and Demo Mode run the original executor unchanged.
+    if (node?.data?.kind !== 'action' || !aiModeEnabled) {
+        return fallback(ctx);
+    }
+
+    try {
+        const ai = await postAgentNode({
+            nodeType: node.data.kind,
+            nodeLabel: node.data.label,
+            workflowName: currentWorkflowName,
+            inputData: inputs?.in ?? {},
+        });
+
+        // Keep the canonical data chain intact — decision/output nodes and the
+        // success toasts depend on the mock's exact shape — so compute it
+        // silently, then let the AI narrate the step and attach its output.
+        const base = await fallback({ ...ctx, emit: () => {} });
+        say(emit, node, 'info', `🤖 ${ai?.decision || `Processed "${node.data.label}"`}`);
+        return { ...base, ai: ai?.output_data ?? null };
+    } catch {
+        return fallback(ctx);
+    }
+}
+
+// Route every executor in a registry through runAgentNode. It self-selects:
+// only action-kind nodes in AI Mode actually call the API; all others delegate
+// straight to the original executor, so trigger/decision/output behaviour and
+// Demo Mode are byte-for-byte unchanged.
+const withAgent = (registry) =>
+    Object.fromEntries(Object.entries(registry).map(([id, exec]) => [id, (ctx) => runAgentNode(ctx, exec)]));
+
 // Generic fallbacks — used for blank workflows and any hand-added node whose id
 // isn't recognized by a template-specific executor.
 const genericExecutors = {
@@ -1983,6 +2062,28 @@ function WorkflowEditor() {
         setAnimSpeedFactor(animationSpeedFactor(userSettings));
     }, [userSettings]);
 
+    // Ask the server (once) whether an Anthropic key is configured, to pick AI
+    // Mode vs Demo Mode. Any failure defaults to Demo Mode so runs never break.
+    useEffect(() => {
+        let active = true;
+        fetch('/api/agent/status', { headers: { Accept: 'application/json' } })
+            .then((r) => (r.ok ? r.json() : Promise.reject(r)))
+            .then((data) => {
+                if (!active) return;
+                const enabled = !!data?.ai_enabled;
+                setAiEnabled(enabled);
+                setAiModeEnabled(enabled);
+            })
+            .catch(() => {
+                if (!active) return;
+                setAiEnabled(false);
+                setAiModeEnabled(false);
+            });
+        return () => {
+            active = false;
+        };
+    }, []);
+
     // A node-deletion awaiting confirmation when "Confirm before deleting nodes"
     // is on: { next: <graph with the node removed>, removed: [<node>, …] }.
     const [pendingNodeDelete, setPendingNodeDelete] = useState(null);
@@ -1991,7 +2092,7 @@ function WorkflowEditor() {
     // with the UX effect executors (`ux_toast`) so hand-placed effect nodes run
     // too. Memoized so the registry keeps a stable identity across renders.
     const executors = useMemo(() => {
-        const base = (effectiveType && executorsByType[effectiveType]) || genericExecutors;
+        const base = withAgent((effectiveType && executorsByType[effectiveType]) || genericExecutors);
         const meta = (effectiveType && toastMetaByType[effectiveType]) || {};
         const fire = (notification) => ux.dispatch('toast', notification);
         return {
@@ -2015,6 +2116,16 @@ function WorkflowEditor() {
     const [tags, setTags] = useState(template?.tags ?? (isBlankNew ? userSettings.defaultTags : []));
     const [dbId, setDbId] = useState(null);
     const [status, setStatus] = useState(null);
+
+    // AI Mode vs Demo Mode: null = still checking, true = server has an
+    // ANTHROPIC_API_KEY (action nodes call Claude), false = mock-only.
+    const [aiEnabled, setAiEnabled] = useState(null);
+
+    // Keep the module-level name (sent to the agent endpoint as workflow_name)
+    // in sync with the editable workflow name.
+    useEffect(() => {
+        setCurrentWorkflowName(name);
+    }, [name]);
 
     // Auto-save bookkeeping. `lastSavedSig` is the fingerprint of the content as
     // of the last successful save (null until the first save / DB load); the
@@ -2541,14 +2652,43 @@ function WorkflowEditor() {
                         <div className="flex min-w-0 items-center gap-2 lg:items-start lg:gap-3">
                             <Logo className="shrink-0 text-indigo-600 dark:text-indigo-400" />
                             <div className="flex min-w-0 flex-col gap-0.5">
-                                <motion.span
-                                    initial={{ opacity: 0, y: -4 }}
-                                    animate={{ opacity: 1, y: 0 }}
-                                    transition={{ duration: 0.4, ease: 'easeOut' }}
-                                    className={`inline-flex w-fit items-center rounded-full px-2 py-0.5 text-[11px] font-medium ring-1 ring-inset lg:px-2.5 lg:text-xs ${accent.badge}`}
-                                >
-                                    {accent.label}
-                                </motion.span>
+                                <div className="flex items-center gap-1.5">
+                                    <motion.span
+                                        initial={{ opacity: 0, y: -4 }}
+                                        animate={{ opacity: 1, y: 0 }}
+                                        transition={{ duration: 0.4, ease: 'easeOut' }}
+                                        className={`inline-flex w-fit items-center rounded-full px-2 py-0.5 text-[11px] font-medium ring-1 ring-inset lg:px-2.5 lg:text-xs ${accent.badge}`}
+                                    >
+                                        {accent.label}
+                                    </motion.span>
+
+                                    {/* AI Mode / Demo Mode — driven by whether the server has an
+                                        ANTHROPIC_API_KEY (GET /api/agent/status). Hidden until known. */}
+                                    {aiEnabled !== null && (
+                                        <Tooltip
+                                            label={
+                                                aiEnabled
+                                                    ? 'AI Mode — Claude reasons through action steps (ANTHROPIC_API_KEY is configured).'
+                                                    : 'Demo Mode — using built-in mock data. Set ANTHROPIC_API_KEY to enable AI.'
+                                            }
+                                            placement="bottom"
+                                        >
+                                            <span
+                                                className={`inline-flex w-fit shrink-0 items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-medium ring-1 ring-inset lg:text-xs ${
+                                                    aiEnabled
+                                                        ? 'bg-emerald-50 text-emerald-700 ring-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300 dark:ring-emerald-400/20'
+                                                        : 'bg-gray-100 text-gray-500 ring-gray-400/20 dark:bg-gray-800 dark:text-gray-400 dark:ring-gray-500/20'
+                                                }`}
+                                            >
+                                                <span
+                                                    className={`h-1.5 w-1.5 rounded-full ${aiEnabled ? 'animate-pulse bg-emerald-500' : 'bg-gray-400'}`}
+                                                    aria-hidden="true"
+                                                />
+                                                {aiEnabled ? 'AI Mode' : 'Demo Mode'}
+                                            </span>
+                                        </Tooltip>
+                                    )}
+                                </div>
                                 <input
                                     type="text"
                                     value={name}

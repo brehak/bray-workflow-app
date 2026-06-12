@@ -105,7 +105,7 @@ export default function Welcome() {
                                             <span className="inline-flex items-center gap-2.5">
                                                 Browse Templates &amp; Workflows
                                                 <span className="rounded-full bg-white/20 px-2 py-0.5 text-[11px] font-semibold leading-none text-white">
-                                                    11 templates
+                                                    10 templates
                                                 </span>
                                             </span>
                                         </Button>
