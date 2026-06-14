@@ -58,7 +58,7 @@ export default function Welcome() {
                         <motion.div initial="hidden" animate="visible" variants={stagger}>
                             <motion.div variants={fadeUp}>
                                 <span className="inline-block rounded-full border border-gray-200 bg-white px-4 py-1.5 text-xs font-medium text-gray-600 shadow-sm dark:border-gray-800 dark:bg-gray-900 dark:text-gray-400">
-                                    ✨ Less busywork, more flow
+                                    ✨ Less busywork, more flow!
                                 </span>
                             </motion.div>
 
