@@ -59,8 +59,13 @@ const templates = {
             { id: 'e1', source: 'trigger', target: 'welcome-email' },
             { id: 'e2', source: 'welcome-email', target: 'create-accounts' },
             { id: 'e3', source: 'create-accounts', target: 'department-check' },
+            // The runner uses AND-join: a node fires only once EVERY incoming edge
+            // has produced a value. `assign-training` merges both department
+            // branches, so BOTH setup steps must run for it (and `complete`) to
+            // execute. Both branches therefore fan out from the decision's active
+            // port and reconverge, instead of one branch being skipped.
             { id: 'e4', source: 'department-check', sourceHandle: 'true', target: 'setup-dev' },
-            { id: 'e5', source: 'department-check', sourceHandle: 'false', target: 'setup-design' },
+            { id: 'e5', source: 'department-check', sourceHandle: 'true', target: 'setup-design' },
             { id: 'e6', source: 'setup-dev', target: 'assign-training' },
             { id: 'e7', source: 'setup-design', target: 'assign-training' },
             { id: 'e8', source: 'assign-training', target: 'complete' },
@@ -102,8 +107,11 @@ const templates = {
         edges: [
             { id: 'e1', source: 'trigger', target: 'triage' },
             { id: 'e2', source: 'triage', target: 'severity' },
+            // AND-join: `fix` merges both branches, so BOTH `hotfix` and `backlog`
+            // must run for `fix` (and `close`) to execute. Both branches fan out
+            // from the decision's active port and reconverge at `fix`.
             { id: 'e3', source: 'severity', sourceHandle: 'true', target: 'hotfix' },
-            { id: 'e4', source: 'severity', sourceHandle: 'false', target: 'backlog' },
+            { id: 'e4', source: 'severity', sourceHandle: 'true', target: 'backlog' },
             { id: 'e5', source: 'hotfix', target: 'fix' },
             { id: 'e6', source: 'backlog', target: 'fix' },
             { id: 'e7', source: 'fix', target: 'close' },
@@ -215,8 +223,12 @@ const templates = {
         edges: [
             { id: 'e1', source: 'trigger', target: 'assess-scope' },
             { id: 'e2', source: 'assess-scope', target: 'safety-check' },
+            // AND-join: `customer-alert` merges both branches, so BOTH
+            // `notify-regulators` and `monitor-situation` must run for the rest of
+            // the chain (`customer-alert` → `return-process` → `resolved`) to
+            // execute. Both branches fan out from the decision's active port.
             { id: 'e3', source: 'safety-check', sourceHandle: 'true', target: 'notify-regulators' },
-            { id: 'e4', source: 'safety-check', sourceHandle: 'false', target: 'monitor-situation' },
+            { id: 'e4', source: 'safety-check', sourceHandle: 'true', target: 'monitor-situation' },
             { id: 'e5', source: 'notify-regulators', target: 'customer-alert' },
             { id: 'e6', source: 'monitor-situation', target: 'customer-alert' },
             { id: 'e7', source: 'customer-alert', target: 'return-process' },
