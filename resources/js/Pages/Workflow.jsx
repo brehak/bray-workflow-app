@@ -2008,12 +2008,22 @@ function WorkflowEditor() {
         [appendFeed],
     );
 
-    const markRunning = useCallback(() => {
-        setRunning(true);
+    // Count of nodes currently executing. The runner drives one node at a time,
+    // but we track a count so the run-off logic is robust regardless: the run is
+    // only considered finished once NOTHING is in flight. This is what stops a
+    // slow node — e.g. an AI-Mode action awaiting Claude, which can easily take
+    // longer than the watchdog window — from prematurely ending the run and
+    // making the next node look like a brand-new run ("▶ run started" repeating).
+    const inflightRef = useRef(0);
+
+    // Arm the run-off watchdog: a short while after the last node finishes, drop
+    // the edge-flow animation. Only armed when nothing is in flight (see
+    // handleNodeDone/Error); any node starting cancels it (see handleNodeStart).
+    // A terminal output node stops the flow immediately instead (handleNodeDone).
+    const armRunOff = useCallback(() => {
         if (stopTimer.current) clearTimeout(stopTimer.current);
-        // Scale the run-off watchdog with the animation-speed factor so a slow run
-        // doesn't stop the edge-flow animation prematurely (and a fast one stops
-        // promptly).
+        // Scale with the animation-speed factor so a slow run doesn't stop the
+        // edge-flow animation prematurely (and a fast one stops promptly).
         stopTimer.current = setTimeout(() => setRunning(false), 3500 * animSpeedFactor);
     }, []);
 
@@ -2025,34 +2035,60 @@ function WorkflowEditor() {
             }
             if (node?.id) currentRunRef.current.nodes[node.id] = 'running';
             currentRunRef.current.lastAt = Date.now();
-            markRunning();
+            inflightRef.current += 1;
+            // A node is actively running, so the run is definitely not over: keep
+            // the animation on and cancel any pending run-off. Without this a node
+            // slower than the watchdog (e.g. an AI-Mode Claude call) would let the
+            // run finalize mid-flight and the next node re-emit "run started".
+            if (stopTimer.current) {
+                clearTimeout(stopTimer.current);
+                stopTimer.current = null;
+            }
+            setRunning(true);
         },
-        [markRunning, appendFeed],
+        [appendFeed],
     );
 
-    const handleNodeDone = useCallback((node) => {
-        if (currentRunRef.current && node?.id) {
-            currentRunRef.current.nodes[node.id] = 'done';
-            currentRunRef.current.lastAt = Date.now();
-        }
-        const label = node?.data?.label ?? '';
-        if (/complete|closed/i.test(label)) {
-            fireConfetti();
-        }
-        // Terminal output reached — stop the edge flow promptly.
-        if (node?.data?.kind === 'output') {
-            if (stopTimer.current) clearTimeout(stopTimer.current);
-            setRunning(false);
-        }
-    }, []);
+    const handleNodeDone = useCallback(
+        (node) => {
+            if (currentRunRef.current && node?.id) {
+                currentRunRef.current.nodes[node.id] = 'done';
+                currentRunRef.current.lastAt = Date.now();
+            }
+            const label = node?.data?.label ?? '';
+            if (/complete|closed/i.test(label)) {
+                fireConfetti();
+            }
+            if (inflightRef.current > 0) inflightRef.current -= 1;
+            // Terminal output reached — stop the edge flow promptly.
+            if (node?.data?.kind === 'output') {
+                if (stopTimer.current) {
+                    clearTimeout(stopTimer.current);
+                    stopTimer.current = null;
+                }
+                setRunning(false);
+                return;
+            }
+            // Otherwise the run is only over once nothing is still in flight. If
+            // the next node starts first it cancels this (see handleNodeStart), so
+            // the run stays a single continuous run across slow/AI nodes.
+            if (inflightRef.current === 0) armRunOff();
+        },
+        [armRunOff],
+    );
 
-    const handleNodeError = useCallback((node) => {
-        if (currentRunRef.current && node?.id) {
-            currentRunRef.current.nodes[node.id] = 'error';
-            currentRunRef.current.lastAt = Date.now();
-            currentRunRef.current.error = true;
-        }
-    }, []);
+    const handleNodeError = useCallback(
+        (node) => {
+            if (currentRunRef.current && node?.id) {
+                currentRunRef.current.nodes[node.id] = 'error';
+                currentRunRef.current.lastAt = Date.now();
+                currentRunRef.current.error = true;
+            }
+            if (inflightRef.current > 0) inflightRef.current -= 1;
+            if (inflightRef.current === 0) armRunOff();
+        },
+        [armRunOff],
+    );
 
     useEffect(() => () => stopTimer.current && clearTimeout(stopTimer.current), []);
 
@@ -2129,6 +2165,19 @@ function WorkflowEditor() {
     const [dbId, setDbId] = useState(null);
     const [status, setStatus] = useState(null);
 
+    // True until the user makes their first manual edit. It starts true on mount
+    // and is reset to true whenever a template or saved workflow is loaded. While
+    // it's true the auto-save and the "unsaved changes" indicator stay dormant, so
+    // merely *loading* content — a template already has a name + nodes, which
+    // would otherwise look like unsaved work — never schedules a save behind the
+    // user's back. The first user-initiated edit (canvas, config panel, name,
+    // description, tags, or import) flips it to false. The manual Save button is
+    // independent of this flag and always works.
+    const [isInitialLoad, setIsInitialLoad] = useState(true);
+    // Mark the workflow as touched by the user. Idempotent — after the first call
+    // it's a no-op (the setter bails on an unchanged value).
+    const markEdited = useCallback(() => setIsInitialLoad(false), []);
+
     // AI Mode vs Demo Mode: null = still checking, true = server has an
     // ANTHROPIC_API_KEY (action nodes call Claude), false = mock-only.
     const [aiEnabled, setAiEnabled] = useState(null);
@@ -2202,6 +2251,9 @@ function WorkflowEditor() {
                 setLastSavedSig(
                     workflowFingerprint(data.name, data.description ?? '', data.tags ?? [], data.nodes, data.edges),
                 );
+                // A fresh load is not a user edit — keep auto-save / the unsaved
+                // indicator dormant until the user actually changes something.
+                setIsInitialLoad(true);
                 setStatus('Loaded from database');
                 setReady(true);
             });
@@ -2260,6 +2312,14 @@ function WorkflowEditor() {
                 return;
             }
         }
+        // Treat this as the user's first edit only when the graph's meaningful
+        // content actually changed. React Flow emits onChange on the initial
+        // render (measuring nodes, syncing selection) with no content change — that
+        // must NOT count, or loading a template/saved workflow would immediately
+        // look "unsaved" and auto-save. graphSignature ignores runtime-only fields.
+        if (isInitialLoad && graphSignature(g.nodes, g.edges) !== graphSignature(graph.nodes, graph.edges)) {
+            markEdited();
+        }
         setGraph(g);
         scheduleCommit(g);
     };
@@ -2269,6 +2329,7 @@ function WorkflowEditor() {
         if (!pendingNodeDelete) return;
         const { next } = pendingNodeDelete;
         setPendingNodeDelete(null);
+        markEdited(); // confirming a node deletion is a user edit
         setGraph(next);
         scheduleCommit(next);
     };
@@ -2371,6 +2432,7 @@ function WorkflowEditor() {
     // change is also recorded for undo/redo.
     const updateNode = (nextNode) => {
         const next = { ...graph, nodes: graph.nodes.map((n) => (n.id === nextNode.id ? nextNode : n)) };
+        markEdited(); // editing a node in the config panel is a user edit
         setGraph(next);
         scheduleCommit(next);
     };
@@ -2384,6 +2446,7 @@ function WorkflowEditor() {
         if (running || !currentRunRef.current) return;
         const run = currentRunRef.current;
         currentRunRef.current = null;
+        inflightRef.current = 0; // run is over — clear any lingering in-flight count
         const nodes = latestGraphRef.current.nodes.map((n) => {
             let status = run.nodes[n.id] ?? 'skipped';
             if (status === 'running') status = 'done';
@@ -2463,6 +2526,7 @@ function WorkflowEditor() {
                     throw new Error('Missing nodes or edges');
                 }
                 const imported = { nodes: data.nodes, edges: data.edges };
+                markEdited(); // imported content is unsaved work the user brought in
                 setGraph(imported);
                 resetHistory(imported); // an import is a fresh start for undo/redo
                 setName(data.name ?? '');
@@ -2487,7 +2551,11 @@ function WorkflowEditor() {
 
     // Fingerprint of the current content + whether it differs from the last save.
     const currentSig = workflowFingerprint(name, description, tags, graph.nodes, graph.edges);
-    const hasUnsavedChanges = currentSig !== lastSavedSig;
+    // Until the user's first manual edit (isInitialLoad), a freshly loaded
+    // template or saved workflow is never considered "unsaved" — this is what
+    // keeps the auto-save, the header indicator, and the navigation guard dormant
+    // on initial load. The manual Save button bypasses this entirely (see persist).
+    const hasUnsavedChanges = !isInitialLoad && currentSig !== lastSavedSig;
 
     // Indicator state for the header badge.
     const saveState = isSaving ? 'saving' : hasUnsavedChanges ? 'unsaved' : 'saved';
@@ -2638,7 +2706,10 @@ function WorkflowEditor() {
         <div className="min-w-0" onKeyDown={handleTagsKeyDown}>
             <Pillbox
                 value={tags}
-                onChange={setTags}
+                onChange={(next) => {
+                    markEdited();
+                    setTags(next);
+                }}
                 placeholder="Add tags… e.g. HR, Design"
                 className="min-w-44 py-1 text-sm sm:min-w-56"
             />
@@ -2704,14 +2775,23 @@ function WorkflowEditor() {
                                 <input
                                     type="text"
                                     value={name}
-                                    onChange={(e) => setName(e.target.value)}
+                                    onChange={(e) => {
+                                        markEdited();
+                                        setName(e.target.value);
+                                    }}
                                     placeholder="Workflow name..."
                                     className="w-full min-w-0 border-none bg-transparent text-base font-semibold leading-tight text-gray-900 outline-none placeholder-gray-400 dark:text-white lg:min-w-96 lg:text-lg"
                                 />
                                 {/* Inline-editable description — hidden until lg so the header
                                     stays compact on small screens and when zoomed in. */}
                                 <div className="hidden lg:block">
-                                    <DescriptionField value={description} onChange={setDescription} />
+                                    <DescriptionField
+                                        value={description}
+                                        onChange={(next) => {
+                                            markEdited();
+                                            setDescription(next);
+                                        }}
+                                    />
                                 </div>
                                 {/* Tags under the brand — lg only (md/sm show them in row 2). */}
                                 <div className="mt-0.5 hidden lg:block">{tagsEditor}</div>
