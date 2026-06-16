@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Sparkles, SlashSquare, ArrowUp, Check, Play } from 'lucide-react';
+import { Sparkles, SlashSquare, ArrowUp, Check, Play, Trash2 } from 'lucide-react';
 
 /**
  * ChatPanel — the "Claude Assistant" conversational sidebar that lives on the
@@ -319,6 +319,7 @@ export default function ChatPanel({ workflow, workflowName, onApplyWorkflow, onR
     const [draft, setDraft] = useState('');
     const [paletteOpen, setPaletteOpen] = useState(false);
     const [loading, setLoading] = useState(false);
+    const [confirmingClear, setConfirmingClear] = useState(false);
     const scrollRef = useRef(null);
     const inputRef = useRef(null);
 
@@ -398,6 +399,15 @@ export default function ChatPanel({ workflow, workflowName, onApplyWorkflow, onR
     // Fire the canvas's real Run button. Returns true if a run actually started
     // (false if it's already running or the controls aren't present).
     const triggerRun = () => runRef.current?.() ?? false;
+
+    // Clear the conversation: reset to the welcome bubble and wipe the stored
+    // history for this workflow. Triggered from the header trash button after the
+    // user confirms.
+    const clearChat = () => {
+        setMessages([WELCOME_MESSAGE]);
+        removeStored(storageKey);
+        setConfirmingClear(false);
+    };
 
     const send = async () => {
         const text = draft.trim();
@@ -538,10 +548,55 @@ export default function ChatPanel({ workflow, workflowName, onApplyWorkflow, onR
                 >
                     <Sparkles size={15} />
                 </span>
-                <div className="min-w-0">
+                <div className="min-w-0 flex-1">
                     <p className="text-sm font-semibold text-gray-800 dark:text-gray-100">Claude Assistant</p>
                     <p className="text-[11px] text-gray-400 dark:text-gray-500">Your workflow co-pilot</p>
                 </div>
+
+                {/* Clear chat — asks for inline confirmation before wiping history */}
+                <AnimatePresence mode="wait" initial={false}>
+                    {confirmingClear ? (
+                        <motion.div
+                            key="confirm"
+                            initial={{ opacity: 0, x: 8 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            exit={{ opacity: 0, x: 8 }}
+                            transition={{ duration: 0.15 }}
+                            className="flex shrink-0 items-center gap-1.5"
+                        >
+                            <span className="text-[11px] text-gray-500 dark:text-gray-400">Clear conversation history?</span>
+                            <button
+                                type="button"
+                                onClick={clearChat}
+                                className="rounded-md bg-red-600 px-2 py-1 text-[11px] font-medium text-white shadow-sm transition-colors hover:bg-red-500"
+                            >
+                                Clear
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setConfirmingClear(false)}
+                                className="rounded-md px-2 py-1 text-[11px] font-medium text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-gray-700/60 dark:hover:text-gray-200"
+                            >
+                                Cancel
+                            </button>
+                        </motion.div>
+                    ) : (
+                        <motion.button
+                            key="trash"
+                            type="button"
+                            onClick={() => setConfirmingClear(true)}
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            transition={{ duration: 0.15 }}
+                            aria-label="Clear chat"
+                            title="Clear chat"
+                            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-gray-400 transition-colors hover:bg-gray-100 hover:text-red-600 dark:text-gray-500 dark:hover:bg-gray-700/60 dark:hover:text-red-400"
+                        >
+                            <Trash2 size={15} />
+                        </motion.button>
+                    )}
+                </AnimatePresence>
             </header>
 
             {/* Message history */}
