@@ -13,6 +13,17 @@
     position: relative;
 }
 
+/* The package clips the card with `overflow: hidden` (so the colored header's
+   corners stay rounded). That also clips the done badge — which is what made it
+   look "small and hidden in the corner." When a node finishes we switch to
+   `overflow: visible` so the larger badge can sit proud of the corner, and round
+   the header's top corners ourselves so the card still looks crisp without the
+   clip. */
+.ff-node__header {
+    border-top-left-radius: 7px;
+    border-top-right-radius: 7px;
+}
+
 /* ── Step 2: node execution — pulsing glow while running ─────────────────── */
 .ff-node--status-running {
     animation: ff-node-pulse 1.2s ease-in-out infinite;
@@ -29,37 +40,87 @@
     }
 }
 
-/* ── Step 2: node execution — green ring + checkmark badge when done ─────── */
+/* ── Step 2: node execution — bright green glow + bold checkmark when done ──
+ * A finished node gets a thick glowing green ring so the path the run actually
+ * took is obvious at a glance, plus a large checkmark badge proud of the
+ * top-right corner. Both the ring and the badge animate in once (the status
+ * class is added when the node transitions running → done — see the note above
+ * about why these are CSS keyframes rather than framer-motion: the node itself
+ * is rendered inside fancy-flow, so we can only style the classes it stamps).
+ * The greens use solid hex with high-alpha glows that read clearly on both the
+ * white and near-black canvases. */
 .ff-node--status-done {
-    box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.7), 0 0 14px 2px rgba(34, 197, 94, 0.35);
-    border-color: rgba(34, 197, 94, 0.7) !important;
+    overflow: visible;
+    border-color: #22c55e !important;
+    box-shadow:
+        0 0 0 2px rgba(34, 197, 94, 0.9),
+        0 0 22px 4px rgba(34, 197, 94, 0.5),
+        0 4px 14px rgba(0, 0, 0, 0.1);
+    animation: ff-node-done-in 0.7s ease-out 1;
+}
+.dark .ff-node--status-done {
+    box-shadow:
+        0 0 0 2px rgba(74, 222, 128, 0.95),
+        0 0 26px 6px rgba(34, 197, 94, 0.7),
+        0 4px 16px rgba(0, 0, 0, 0.5);
+}
+
+/* One-shot ring pulse on completion. The 100% frame matches the steady glow
+   above so the node settles seamlessly once the animation ends (no `forwards`
+   needed). */
+@keyframes ff-node-done-in {
+    0% {
+        box-shadow: 0 0 0 0 rgba(34, 197, 94, 0), 0 0 0 0 rgba(34, 197, 94, 0), 0 4px 14px rgba(0, 0, 0, 0.1);
+    }
+    45% {
+        box-shadow: 0 0 0 6px rgba(34, 197, 94, 0.3), 0 0 32px 10px rgba(34, 197, 94, 0.85), 0 4px 14px rgba(0, 0, 0, 0.1);
+    }
+    100% {
+        box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.9), 0 0 22px 4px rgba(34, 197, 94, 0.5), 0 4px 14px rgba(0, 0, 0, 0.1);
+    }
 }
 
 .ff-node--status-done::after {
     content: '✓';
     position: absolute;
-    top: -10px;
-    right: -10px;
+    top: -14px;
+    right: -14px;
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 22px;
-    height: 22px;
+    width: 32px;
+    height: 32px;
     border-radius: 9999px;
     background: #22c55e;
     color: #fff;
-    font-size: 13px;
-    font-weight: 700;
+    font-size: 18px;
+    font-weight: 800;
     line-height: 1;
-    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+    /* White ring in light mode separates the badge from the card; matched to the
+       dark card color in dark mode for the same crisp cutout effect. */
+    border: 2px solid #fff;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35), 0 0 14px rgba(34, 197, 94, 0.85);
     transform-origin: center;
-    animation: ff-check-pop 0.35s cubic-bezier(0.18, 0.89, 0.32, 1.28);
-    z-index: 5;
+    animation: ff-check-pop 0.55s cubic-bezier(0.18, 0.89, 0.32, 1.28) 1;
+    z-index: 6;
+}
+.dark .ff-node--status-done::after {
+    border-color: #1c1917;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.6), 0 0 16px rgba(74, 222, 128, 0.9);
 }
 
+/* Pop in with a little overshoot so the checkmark "lands" with weight. */
 @keyframes ff-check-pop {
     0% {
         transform: scale(0);
+        opacity: 0;
+    }
+    50% {
+        transform: scale(1.35);
+        opacity: 1;
+    }
+    72% {
+        transform: scale(0.9);
     }
     100% {
         transform: scale(1);
