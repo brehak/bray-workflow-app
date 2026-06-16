@@ -1946,6 +1946,17 @@ function WorkflowEditor() {
     const [running, setRunning] = useState(false);
     const stopTimer = useRef(null);
 
+    // Ids of the outgoing edges a decision node chose during the current run.
+    // We light these green so the branch the run actually took is unmistakable;
+    // it's injected as a <style> rule keyed on each edge's data-id (the edges are
+    // rendered by React Flow, same approach as the just-dropped port pulse). The
+    // green persists after the run so the taken path stays visible; a fresh run
+    // clears it (see handleNodeStart). `edgesRef` mirrors the live edges so the
+    // run hooks can resolve a decision's branch → edge id without re-creating the
+    // (otherwise stable) executor callbacks on every graph edit.
+    const [doneEdgeIds, setDoneEdgeIds] = useState([]);
+    const edgesRef = useRef([]);
+
     // Run-history capture. `currentRunRef` accumulates the in-flight run (start
     // time, last activity, and each node's status) as the executor hooks fire;
     // it's finalized into `runHistory` (kept in state only, last 5) when the run
@@ -2032,6 +2043,9 @@ function WorkflowEditor() {
             if (!currentRunRef.current) {
                 currentRunRef.current = { startedAt: Date.now(), lastAt: Date.now(), nodes: {}, error: false };
                 appendFeed({ level: 'info', text: '▶ run started' });
+                // Clear the previous run's highlighted branch so this run paints
+                // its own path from scratch.
+                setDoneEdgeIds([]);
             }
             if (node?.id) currentRunRef.current.nodes[node.id] = 'running';
             currentRunRef.current.lastAt = Date.now();
@@ -2050,10 +2064,20 @@ function WorkflowEditor() {
     );
 
     const handleNodeDone = useCallback(
-        (node) => {
+        (node, result) => {
             if (currentRunRef.current && node?.id) {
                 currentRunRef.current.nodes[node.id] = 'done';
                 currentRunRef.current.lastAt = Date.now();
+            }
+            // For a decision node, light the outgoing edge(s) on the branch it
+            // chose. Decision executors return `{ branch: 'true' | 'false' }`,
+            // which matches the edges' `sourceHandle`, so the taken branch maps
+            // straight to its edge ids.
+            if (node?.data?.kind === 'decision' && result?.branch != null) {
+                const chosen = edgesRef.current
+                    .filter((e) => e.source === node.id && (e.sourceHandle ?? null) === result.branch)
+                    .map((e) => e.id);
+                if (chosen.length) setDoneEdgeIds((prev) => [...new Set([...prev, ...chosen])]);
             }
             const label = node?.data?.label ?? '';
             if (/complete|closed/i.test(label)) {
@@ -2164,6 +2188,14 @@ function WorkflowEditor() {
     const [tags, setTags] = useState(template?.tags ?? (isBlankNew ? userSettings.defaultTags : []));
     const [dbId, setDbId] = useState(null);
     const [status, setStatus] = useState(null);
+
+    // Keep edgesRef pointing at the live edges so the run hooks (handleNodeDone)
+    // can map a decision's chosen branch to its outgoing edge id without taking
+    // a dependency on `graph` — which would otherwise rebuild the executors on
+    // every edit.
+    useEffect(() => {
+        edgesRef.current = graph.edges;
+    }, [graph.edges]);
 
     // True until the user makes their first manual edit. It starts true on mount
     // and is reset to true whenever a template or saved workflow is loaded. While
@@ -3044,6 +3076,16 @@ function WorkflowEditor() {
                             the node's data-id since React Flow owns the handle elements. */}
                         {pulseNodeId && (
                             <style>{`.workflow-editor .react-flow__node[data-id="${pulseNodeId}"] .react-flow__handle { animation: ff-port-pulse 0.85s ease-in-out 2; }`}</style>
+                        )}
+                        {/* Light the branch each decision took in solid green. Injected as a
+                            rule keyed on each edge's data-id since React Flow owns the edge
+                            paths. `!important` beats the running edge-flow animation (which
+                            paints every edge indigo while a run is in flight) so the chosen
+                            branch reads as green immediately and stays green after the run. */}
+                        {doneEdgeIds.length > 0 && (
+                            <style>{`${doneEdgeIds
+                                .map((id) => `.workflow-editor .react-flow__edge[data-id="${id}"] .react-flow__edge-path`)
+                                .join(', ')} { stroke: #22c55e !important; stroke-width: 3.5 !important; stroke-dasharray: none !important; animation: none !important; filter: drop-shadow(0 0 5px rgba(34, 197, 94, 0.9)); }`}</style>
                         )}
                         {ready ? (
                             <FlowEditor
