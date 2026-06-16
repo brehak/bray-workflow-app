@@ -2469,6 +2469,49 @@ function WorkflowEditor() {
         scheduleCommit(next);
     };
 
+    // Apply a graph proposed by the Claude chat assistant. The backend has
+    // already validated the shape ({ nodes, edges }), so we trust it here, strip
+    // any stray runtime selection, record it for undo/redo (so the user can undo
+    // an AI change), and remount the editor (editorKey bump) so React Flow
+    // re-frames the new graph — just like an import. Returns true so the chat
+    // panel can show an "applied" badge.
+    const applyAiWorkflow = (aiGraph) => {
+        if (!aiGraph || !Array.isArray(aiGraph.nodes) || aiGraph.nodes.length === 0) return false;
+        const next = {
+            nodes: aiGraph.nodes.map((n) => ({ ...n, selected: false })),
+            edges: Array.isArray(aiGraph.edges) ? aiGraph.edges : [],
+        };
+        markEdited(); // an AI-applied change is unsaved work
+        setGraph(next);
+        scheduleCommit(next); // record as an undoable step
+        setEditorKey((k) => k + 1); // remount so fitView frames the new graph
+        return true;
+    };
+
+    // Trigger the real FlowEditor Run button from outside (e.g. the chat panel),
+    // so a chat-initiated run is the exact same run as clicking Run — animations,
+    // run feed, run history and toasts all behave identically. We click the
+    // editor's own run control (it owns the run loop) rather than re-implementing
+    // it. Returns true if a run started, false if it's already running (the run
+    // button is swapped for Cancel mid-run) or the control isn't mounted yet.
+    const triggerCanvasRun = () => {
+        const btn = editorBoxRef.current?.querySelector('.ff-run-controls__btn--run');
+        if (btn) {
+            btn.click();
+            return true;
+        }
+        return false;
+    };
+
+    // Stable per-workflow key for persisting the chat history. Prefer the saved
+    // id (URL or db) so it survives navigating away and back; fall back to the
+    // name for brand-new, unsaved workflows.
+    const chatStorageKey = savedId
+        ? `id:${savedId}`
+        : dbId
+          ? `id:${dbId}`
+          : `name:${name.trim() || 'untitled'}`;
+
     // Finalize a run into history when `running` falls back to false. We build a
     // per-node result from the live graph: nodes the hooks reported (done/error,
     // or a started-but-unreported node treated as done) and everything else
@@ -3211,7 +3254,15 @@ function WorkflowEditor() {
                         a toggle to switch between them). Config edits flow back into
                         `graph` (controlled editor), so they show on the canvas live
                         and are saved with the workflow. */}
-                    <RightPanel selectedNode={selectedNode} onChange={updateNode} />
+                    <RightPanel
+                        selectedNode={selectedNode}
+                        onChange={updateNode}
+                        workflow={graph}
+                        workflowName={name}
+                        onApplyWorkflow={applyAiWorkflow}
+                        onRunWorkflow={triggerCanvasRun}
+                        chatStorageKey={chatStorageKey}
+                    />
                     </div>
                 </main>
             </div>

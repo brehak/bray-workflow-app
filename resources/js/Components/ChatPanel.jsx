@@ -1,18 +1,111 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Sparkles, SlashSquare, ArrowUp } from 'lucide-react';
+import { Sparkles, SlashSquare, ArrowUp, Check, Play } from 'lucide-react';
 
 /**
  * ChatPanel — the "Claude Assistant" conversational sidebar that lives on the
- * right of the workflow editor. Stage 1 is UI-only: it keeps a local message
- * history, renders user/assistant bubbles, and offers a slash-command palette.
- * No AI is wired up yet — sending a message echoes it and drops a friendly
- * placeholder so the full chat surface can be exercised. Stage 2 will replace
- * the placeholder with real Claude responses.
+ * right of the workflow editor. It keeps a local message history, renders
+ * user/assistant bubbles, and offers a slash-command palette.
+ *
+ * Stage 2 wires it to Claude: each message is POSTed to /api/workflow/chat
+ * along with the live workflow graph and the running conversation history, so
+ * Claude has full context and remembers the conversation. When Claude proposes
+ * workflow changes, it returns the complete new graph; we hand that to
+ * `onApplyWorkflow` so the canvas updates automatically.
+ *
+ * Conversation history persists in localStorage keyed by the workflow (id, or
+ * name for unsaved ones), so it survives navigating away and back. It's wiped
+ * only when the user explicitly clears the chat (`/clear`).
+ *
+ * Props:
+ *   workflow         — the current { nodes, edges } graph (live from the editor)
+ *   workflowName     — the workflow's name, for context
+ *   onApplyWorkflow  — (graph) => void, applies an AI-proposed graph to the canvas
+ *   onRunWorkflow    — () => bool, triggers the canvas's real Run button
+ *   storageKey       — stable per-workflow key for persisting chat history
  *
  * Styling intentionally mirrors the rest of the app: glassmorphism cards, full
  * dark/light support, and framer-motion for the message + palette transitions.
  */
+
+// Maps a slash command to a fuller, explicit instruction for Claude. The user
+// still sees what they typed in their bubble; this is only what we send to the
+// model so terse commands like "/explain" become clear, actionable prompts.
+// `/clear` (clears the conversation) and `/run` (triggers the real canvas run)
+// are handled locally and aren't here.
+const COMMAND_PROMPTS = {
+    '/build': 'Build a complete workflow from this description, replacing the current canvas:',
+    '/add': 'Add a new step to the current workflow:',
+    '/modify': 'Modify the current workflow:',
+    '/remove': 'Remove the following from the current workflow:',
+    '/connect': 'Connect these steps in the current workflow:',
+    '/branch': 'Add a decision branch to the current workflow:',
+    '/explain': 'Explain what this workflow does, step by step.',
+    '/summarize': 'Give a short, plain-English summary of this workflow.',
+    '/review': 'Review this workflow for issues, gaps, or mistakes, and list what you find.',
+    '/optimize': 'Suggest specific ways to improve or optimize this workflow.',
+    '/suggest': 'Suggest a sensible next step to add to this workflow, and offer to add it.',
+    '/example': 'Show an example workflow I could build, and offer to create it.',
+    '/expand': 'Expand the current workflow with additional useful steps.',
+    '/save': 'The user wants to save this workflow. Let them know they can save with the Save button (or ⌘S), and note anything worth checking first.',
+    '/reset': 'The user wants to reset this workflow. Confirm what resetting would do and ask them to confirm before you propose any change.',
+};
+
+// ── Chat history persistence ────────────────────────────────────────────────
+// Keyed by workflow so each workflow keeps its own conversation across visits.
+const STORAGE_PREFIX = 'workflow-chat:';
+const storageKeyFor = (key) => `${STORAGE_PREFIX}${key}`;
+
+const loadStored = (key) => {
+    if (!key) return null;
+    try {
+        const raw = localStorage.getItem(storageKeyFor(key));
+        if (!raw) return null;
+        const parsed = JSON.parse(raw);
+        return Array.isArray(parsed) ? parsed : null;
+    } catch {
+        return null;
+    }
+};
+
+const saveStored = (key, messages) => {
+    if (!key) return;
+    try {
+        // A pristine, welcome-only chat isn't worth storing — clear the slot so a
+        // fresh visit (or a cleared chat) falls back to the default welcome.
+        if (messages.length <= 1) localStorage.removeItem(storageKeyFor(key));
+        else localStorage.setItem(storageKeyFor(key), JSON.stringify(messages));
+    } catch {
+        // Storage unavailable (private mode, quota) — persistence is best-effort.
+    }
+};
+
+const removeStored = (key) => {
+    if (!key) return;
+    try {
+        localStorage.removeItem(storageKeyFor(key));
+    } catch {
+        // ignore storage failures
+    }
+};
+
+// Is this input the explicit "/run" command (optionally with trailing space)?
+const isRunCommand = (text) => /^\/run(\s.*)?$/i.test(text.trim());
+
+// Turn a raw input into the text we send to Claude: if it starts with a known
+// slash command, swap in that command's fuller instruction and append any extra
+// text the user typed after it. Otherwise send the text as-is.
+function expandCommand(text) {
+    const trimmed = text.trim();
+    const match = trimmed.match(/^(\/\S+)\s*(.*)$/s);
+    if (match && COMMAND_PROMPTS[match[1]]) {
+        const rest = match[2].trim();
+        return rest ? `${COMMAND_PROMPTS[match[1]]} ${rest}` : COMMAND_PROMPTS[match[1]];
+    }
+    return trimmed;
+}
+
+const csrfToken = () => document.querySelector('meta[name="csrf-token"]')?.content ?? '';
 
 // Slash commands, grouped by category, surfaced through the `/` palette. These
 // are presentational for now — selecting one just drops it into the input.
@@ -65,6 +158,15 @@ const WELCOME_MESSAGE = {
 let messageSeq = 0;
 const nextId = () => `m${++messageSeq}`;
 
+// Loaded (persisted) messages carry ids like "m7"; bump the module counter past
+// them so freshly-generated ids can't collide with restored ones.
+const ensureSeqPast = (messages) => {
+    for (const m of messages) {
+        const n = parseInt(String(m?.id ?? '').replace(/^m/, ''), 10);
+        if (Number.isFinite(n) && n > messageSeq) messageSeq = n;
+    }
+};
+
 function MessageBubble({ message }) {
     const isUser = message.role === 'user';
     return (
@@ -90,7 +192,55 @@ function MessageBubble({ message }) {
                             : 'rounded-2xl rounded-tl-sm border border-gray-200/70 bg-white/70 px-3 py-2 text-sm text-gray-700 shadow-sm backdrop-blur dark:border-gray-700/60 dark:bg-gray-800/60 dark:text-gray-200'
                     }
                 >
-                    {message.text}
+                    <span className="whitespace-pre-wrap break-words">{message.text}</span>
+                    {message.applied && (
+                        <span className="mt-1.5 flex items-center gap-1 text-[11px] font-medium text-emerald-600 dark:text-emerald-400">
+                            <Check size={12} />
+                            Applied to canvas
+                        </span>
+                    )}
+                    {message.ran && (
+                        <span className="mt-1.5 flex items-center gap-1 text-[11px] font-medium text-indigo-600 dark:text-indigo-400">
+                            <Play size={11} />
+                            Running on canvas
+                        </span>
+                    )}
+                </div>
+            </div>
+        </motion.div>
+    );
+}
+
+/**
+ * TypingIndicator — the assistant "…" bubble shown while we wait on Claude.
+ * Mirrors MessageBubble's assistant styling with three bouncing dots.
+ */
+function TypingIndicator() {
+    return (
+        <motion.div
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0 }}
+            transition={{ type: 'spring', stiffness: 360, damping: 30 }}
+            className="flex justify-start"
+            aria-label="Claude is typing"
+        >
+            <div className="flex max-w-[85%] flex-row gap-2">
+                <span
+                    aria-hidden="true"
+                    className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-indigo-500 to-fuchsia-500 text-white shadow-sm"
+                >
+                    <Sparkles size={13} />
+                </span>
+                <div className="flex items-center gap-1 rounded-2xl rounded-tl-sm border border-gray-200/70 bg-white/70 px-3 py-2.5 shadow-sm backdrop-blur dark:border-gray-700/60 dark:bg-gray-800/60">
+                    {[0, 1, 2].map((i) => (
+                        <motion.span
+                            key={i}
+                            className="h-1.5 w-1.5 rounded-full bg-gray-400 dark:bg-gray-500"
+                            animate={{ opacity: [0.3, 1, 0.3], y: [0, -2, 0] }}
+                            transition={{ duration: 1, repeat: Infinity, delay: i * 0.18, ease: 'easeInOut' }}
+                        />
+                    ))}
                 </div>
             </div>
         </motion.div>
@@ -156,34 +306,203 @@ function CommandPalette({ open, onSelect, query }) {
     );
 }
 
-export default function ChatPanel() {
-    const [messages, setMessages] = useState([WELCOME_MESSAGE]);
+export default function ChatPanel({ workflow, workflowName, onApplyWorkflow, onRunWorkflow, storageKey }) {
+    // Seed messages from this workflow's persisted history (if any) on first mount.
+    const [messages, setMessages] = useState(() => {
+        const stored = loadStored(storageKey);
+        if (stored && stored.length) {
+            ensureSeqPast(stored);
+            return stored;
+        }
+        return [WELCOME_MESSAGE];
+    });
     const [draft, setDraft] = useState('');
     const [paletteOpen, setPaletteOpen] = useState(false);
+    const [loading, setLoading] = useState(false);
     const scrollRef = useRef(null);
     const inputRef = useRef(null);
 
-    // Keep the latest message in view as the history grows.
+    // Latest workflow/handlers, read at send time so the in-flight request and
+    // the apply/run steps always see the live canvas (props change as the user edits).
+    const workflowRef = useRef(workflow);
+    const nameRef = useRef(workflowName);
+    const applyRef = useRef(onApplyWorkflow);
+    const runRef = useRef(onRunWorkflow);
+    useEffect(() => {
+        workflowRef.current = workflow;
+        nameRef.current = workflowName;
+        applyRef.current = onApplyWorkflow;
+        runRef.current = onRunWorkflow;
+    });
+
+    // ── Persist conversation per workflow ───────────────────────────────────
+    // `reconcileKeyRef` tracks the workflow `messages` currently belong to, so
+    // we can react when the workflow key changes (navigating to another saved
+    // workflow, or a new one getting an id on first save). `renderKeyRef` lets
+    // the persist effect skip the single transition render (where `messages`
+    // still holds the previous workflow's chat) so we never write it to the new
+    // key.
+    const reconcileKeyRef = useRef(storageKey);
+    const renderKeyRef = useRef(storageKey);
+
+    useEffect(() => {
+        const prevKey = reconcileKeyRef.current;
+        if (prevKey === storageKey) return;
+        reconcileKeyRef.current = storageKey;
+
+        const toSaved = storageKey?.startsWith('id:'); // an id key = a saved workflow
+        const stored = loadStored(storageKey);
+        const hasStored = stored && stored.length > 0;
+
+        // Navigated to / loaded a SAVED workflow that already has its own chat → show it.
+        if (toSaved && hasStored) {
+            ensureSeqPast(stored);
+            setMessages(stored);
+            return;
+        }
+
+        // Same conversation, new key: an unsaved workflow being renamed (name→name),
+        // or a new one getting an id on first save (name→id with no chat yet).
+        // Carry the current conversation forward under the new key.
+        const sameWorkflow = !toSaved || (prevKey && !prevKey.startsWith('id:'));
+        if (sameWorkflow) {
+            setMessages((cur) => {
+                saveStored(storageKey, cur);
+                return cur;
+            });
+            removeStored(prevKey);
+            return;
+        }
+
+        // Otherwise we genuinely switched to a different saved workflow with no
+        // stored chat → start fresh.
+        setMessages([WELCOME_MESSAGE]);
+    }, [storageKey]);
+
+    useEffect(() => {
+        const keyChangedThisRender = renderKeyRef.current !== storageKey;
+        renderKeyRef.current = storageKey;
+        // On the render where the key changed, `messages` still belongs to the old
+        // workflow — the reconcile effect above will load/migrate the right ones.
+        // Skip so we don't persist stale chat under the new key.
+        if (keyChangedThisRender) return;
+        saveStored(storageKey, messages);
+    }, [messages, storageKey]);
+
+    // Keep the latest message in view as the history (or typing indicator) grows.
     useEffect(() => {
         const el = scrollRef.current;
         if (el) el.scrollTop = el.scrollHeight;
-    }, [messages]);
+    }, [messages, loading]);
 
-    const send = () => {
+    // Fire the canvas's real Run button. Returns true if a run actually started
+    // (false if it's already running or the controls aren't present).
+    const triggerRun = () => runRef.current?.() ?? false;
+
+    const send = async () => {
         const text = draft.trim();
-        if (!text) return;
-        setMessages((prev) => [
-            ...prev,
-            { id: nextId(), role: 'user', text },
-            // Stage 1 placeholder — real Claude responses land in Stage 2.
-            {
-                id: nextId(),
-                role: 'assistant',
-                text: "I'm not wired up to think yet — that arrives in Stage 2. For now you're seeing the chat experience take shape!",
-            },
-        ]);
+        if (!text || loading) return;
+
+        // `/clear` is a local action — wipe the conversation (and its stored copy).
+        if (text === '/clear' || text === '/clear ') {
+            setMessages([WELCOME_MESSAGE]);
+            removeStored(storageKey);
+            setDraft('');
+            setPaletteOpen(false);
+            return;
+        }
+
+        // `/run` triggers the actual canvas run (not a simulated one). Results show
+        // in the real run feed below the canvas; the chat just confirms.
+        if (isRunCommand(text)) {
+            const started = triggerRun();
+            setMessages((prev) => [
+                ...prev,
+                { id: nextId(), role: 'user', text },
+                {
+                    id: nextId(),
+                    role: 'assistant',
+                    text: started
+                        ? '▶ Running your workflow — watch the run feed below the canvas for results.'
+                        : 'The workflow looks like it’s already running — check the run feed below the canvas.',
+                },
+            ]);
+            setDraft('');
+            setPaletteOpen(false);
+            return;
+        }
+
+        // Conversation history sent to Claude = the real turns so far (skip the
+        // canned welcome bubble). Built before we append the new user turn.
+        const history = messages
+            .filter((m) => m.id !== 'welcome' && (m.role === 'user' || m.role === 'assistant'))
+            .map((m) => ({ role: m.role, content: m.text }));
+
+        setMessages((prev) => [...prev, { id: nextId(), role: 'user', text }]);
         setDraft('');
         setPaletteOpen(false);
+        setLoading(true);
+
+        try {
+            const res = await fetch('/api/workflow/chat', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Accept: 'application/json',
+                    'X-CSRF-TOKEN': csrfToken(),
+                },
+                body: JSON.stringify({
+                    message: expandCommand(text),
+                    workflow_name: nameRef.current ?? 'Workflow',
+                    workflow: {
+                        nodes: workflowRef.current?.nodes ?? [],
+                        edges: workflowRef.current?.edges ?? [],
+                    },
+                    conversation_history: history,
+                }),
+            });
+            if (!res.ok) throw new Error(`workflow/chat HTTP ${res.status}`);
+            const data = await res.json();
+
+            // Apply any proposed graph to the canvas before showing the reply, so
+            // the change is on screen by the time the user reads "I've added…".
+            let applied = false;
+            if (data.workflow && Array.isArray(data.workflow.nodes)) {
+                applied = applyRef.current?.(data.workflow) ?? false;
+            }
+
+            // If Claude decided the user wants to run the workflow, trigger the
+            // real canvas Run. When a graph change was just applied the editor
+            // remounts, so defer the click briefly to let the new graph render.
+            let ran = false;
+            if (data.run === true) {
+                if (applied) setTimeout(triggerRun, 400);
+                else ran = triggerRun();
+            }
+
+            const replyText = data.reply || 'Done.';
+            setMessages((prev) => [
+                ...prev,
+                {
+                    id: nextId(),
+                    role: 'assistant',
+                    text: replyText,
+                    applied: applied === true,
+                    ran: ran === true || (data.run === true && applied),
+                },
+            ]);
+        } catch {
+            setMessages((prev) => [
+                ...prev,
+                {
+                    id: nextId(),
+                    role: 'assistant',
+                    text: "Sorry — something went wrong reaching Claude. Please try again.",
+                },
+            ]);
+        } finally {
+            setLoading(false);
+        }
     };
 
     const onKeyDown = (e) => {
@@ -230,6 +549,7 @@ export default function ChatPanel() {
                 {messages.map((m) => (
                     <MessageBubble key={m.id} message={m} />
                 ))}
+                <AnimatePresence>{loading && <TypingIndicator key="typing" />}</AnimatePresence>
             </div>
 
             {/* Composer */}
@@ -256,13 +576,13 @@ export default function ChatPanel() {
                             onChange={(e) => setDraft(e.target.value)}
                             onKeyDown={onKeyDown}
                             rows={1}
-                            placeholder="Message Claude or type /"
+                            placeholder={loading ? 'Claude is thinking…' : 'Message Claude or type /'}
                             className="max-h-28 flex-1 resize-none bg-transparent py-1.5 text-sm text-gray-800 placeholder:text-gray-400 focus:outline-none dark:text-gray-100 dark:placeholder:text-gray-500"
                         />
                         <button
                             type="button"
                             onClick={send}
-                            disabled={!draft.trim()}
+                            disabled={!draft.trim() || loading}
                             aria-label="Send message"
                             className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-indigo-600 text-white shadow-sm transition-colors hover:bg-indigo-500 disabled:cursor-not-allowed disabled:bg-gray-200 disabled:text-gray-400 dark:disabled:bg-gray-700 dark:disabled:text-gray-500"
                         >

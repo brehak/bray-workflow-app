@@ -19,7 +19,15 @@ import NodeConfigPanel from './NodeConfigPanel';
  * via an always-mounted layer that's hidden, rather than unmounted, when the
  * config view is on top.
  */
-export default function RightPanel({ selectedNode, onChange }) {
+export default function RightPanel({
+    selectedNode,
+    onChange,
+    workflow,
+    workflowName,
+    onApplyWorkflow,
+    onRunWorkflow,
+    chatStorageKey,
+}) {
     const [view, setView] = useState('chat'); // 'chat' | 'config'
     const prevNodeId = useRef(selectedNode?.id ?? null);
 
@@ -60,7 +68,13 @@ export default function RightPanel({ selectedNode, onChange }) {
                 config view animates in on top when active. */}
             <div className="relative min-h-0 flex-1">
                 <div className={view === 'chat' ? 'h-full' : 'pointer-events-none invisible h-full'}>
-                    <ChatPanel />
+                    <ChatPanel
+                        workflow={workflow}
+                        workflowName={workflowName}
+                        onApplyWorkflow={onApplyWorkflow}
+                        onRunWorkflow={onRunWorkflow}
+                        storageKey={chatStorageKey}
+                    />
                 </div>
 
                 <AnimatePresence>
