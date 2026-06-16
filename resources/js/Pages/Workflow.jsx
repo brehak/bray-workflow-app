@@ -28,7 +28,7 @@ import DescriptionField from '../Components/DescriptionField';
 import Logo from '../Components/Logo';
 import NavButton from '../Components/NavButton';
 import BeginnerGuide from '../Components/BeginnerGuide';
-import NodeConfigPanel from '../Components/NodeConfigPanel';
+import RightPanel from '../Components/RightPanel';
 import PaletteRelabel from '../Components/PaletteRelabel';
 import RunFeedPanel from '../Components/RunFeedPanel';
 import RunHistoryPanel from '../Components/RunHistoryPanel';
@@ -3206,10 +3206,12 @@ function WorkflowEditor() {
                     />
                     </div>
 
-                    {/* Right sidebar: configure the selected node. Edits flow back
-                        into `graph` (controlled editor), so they show on the canvas
-                        live and are saved with the workflow. */}
-                    <NodeConfigPanel node={selectedNode} onChange={updateNode} />
+                    {/* Right sidebar: the smart panel — Claude chat assistant when
+                        no node is selected, the node config editor when one is (with
+                        a toggle to switch between them). Config edits flow back into
+                        `graph` (controlled editor), so they show on the canvas live
+                        and are saved with the workflow. */}
+                    <RightPanel selectedNode={selectedNode} onChange={updateNode} />
                     </div>
                 </main>
             </div>
