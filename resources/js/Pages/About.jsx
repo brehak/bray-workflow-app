@@ -4,14 +4,23 @@ import { motion } from 'framer-motion';
 import {
     Activity,
     ArrowRight,
+    Bell,
+    BrainCircuit,
+    Copy,
     ExternalLink,
+    FileJson,
+    Filter,
     GraduationCap,
     History,
     Keyboard,
     LayoutTemplate,
+    MessageSquare,
     MoonStar,
     Save,
+    Search,
+    Settings,
     Sparkles,
+    Tags,
     Workflow,
 } from 'lucide-react';
 import GradientDivider from '../Components/GradientDivider';
@@ -87,6 +96,17 @@ function FramerMark() {
     );
 }
 
+function PrismMark() {
+    // A literal prism — a triangle splitting light into a spectrum, nodding to
+    // Prism PHP's role of routing prompts to the Claude models.
+    return (
+        <svg viewBox="0 0 24 24" className="h-6 w-6" aria-hidden="true">
+            <path d="M12 3 3 19h18z" fill="none" stroke="#A855F7" strokeWidth="1.4" strokeLinejoin="round" />
+            <path d="M12 11 22 8M12 13 22 13M12 15 22 18" fill="none" stroke="#A855F7" strokeWidth="1.2" strokeLinecap="round" />
+        </svg>
+    );
+}
+
 function InertiaMark() {
     // Forward chevrons — evokes Inertia's motion mark.
     return (
@@ -116,6 +136,12 @@ const BUILT_WITH = [
         href: 'https://laravel.com',
         icon: <LaravelMark />,
         blurb: 'The PHP framework serving the app and its data.',
+    },
+    {
+        name: 'Prism PHP',
+        href: 'https://prismphp.com',
+        icon: <PrismMark />,
+        blurb: 'The elegant LLM toolkit that wires our nodes and chat to Claude.',
     },
     {
         name: 'Inertia.js',
@@ -150,6 +176,16 @@ const FEATURES = [
         body: 'Drag, drop and connect steps on an infinite canvas — no code required.',
     },
     {
+        icon: MessageSquare,
+        title: 'Claude AI Assistant',
+        body: 'A built-in chat panel where Claude builds, edits and explains your workflow in plain English.',
+    },
+    {
+        icon: BrainCircuit,
+        title: 'Agentic AI Nodes',
+        body: 'Flip a node into AI Mode and real Claude reasoning decides what happens at that step.',
+    },
+    {
         icon: LayoutTemplate,
         title: 'Ready-Made Templates',
         body: 'Start from one of 10 real-world workflows and tailor it to your needs.',
@@ -160,14 +196,14 @@ const FEATURES = [
         body: 'Run a workflow and watch each step execute in a real-time run feed.',
     },
     {
+        icon: Bell,
+        title: 'Toast Notifications',
+        body: 'Polished FlowRunnerUx toasts surface every run, save and error as it happens.',
+    },
+    {
         icon: History,
         title: 'Run History',
         body: 'Revisit past runs in a collapsible panel to see exactly what happened.',
-    },
-    {
-        icon: MoonStar,
-        title: 'Dark & Light Mode',
-        body: 'A theme that follows your system preference, or set it yourself.',
     },
     {
         icon: Keyboard,
@@ -175,14 +211,44 @@ const FEATURES = [
         body: 'Move fast with shortcuts for the actions you reach for most.',
     },
     {
+        icon: GraduationCap,
+        title: 'Guided Onboarding',
+        body: 'A step-by-step beginner guide gets newcomers building in minutes.',
+    },
+    {
         icon: Save,
         title: 'Autosave',
         body: 'Your work is saved as you go, so you never lose a change.',
     },
     {
-        icon: GraduationCap,
-        title: 'Guided Onboarding',
-        body: 'A step-by-step beginner guide gets newcomers building in minutes.',
+        icon: FileJson,
+        title: 'Export & Import',
+        body: 'Move any workflow in or out as portable JSON — back it up or share it.',
+    },
+    {
+        icon: Copy,
+        title: 'Duplicate Workflows',
+        body: 'Clone an existing flow in one click and branch off in a new direction.',
+    },
+    {
+        icon: Tags,
+        title: 'Tags & Filtering',
+        body: 'Organize workflows with tags, then filter your library down in seconds.',
+    },
+    {
+        icon: Search,
+        title: 'Instant Search',
+        body: 'Find any workflow by name as you type, no matter how large your library grows.',
+    },
+    {
+        icon: Settings,
+        title: 'Settings',
+        body: 'Tune display and editor preferences from a dedicated settings page.',
+    },
+    {
+        icon: MoonStar,
+        title: 'Dark & Light Mode',
+        body: 'A theme that follows your system preference, or set it yourself.',
     },
 ];
 
@@ -262,8 +328,9 @@ export default function About() {
                                         Fancy Workflows is a visual builder for mapping out how your work gets done — then
                                         watching it run. Drag steps onto a canvas, connect them into a flow, and simulate a
                                         run to see each stage play out live. Start from one of ten real-world templates or
-                                        build your own from scratch. It's a polished demo of what a modern, no-code
-                                        automation tool can feel like.
+                                        let the built-in Claude assistant build one for you. With agentic AI nodes powered by
+                                        real Claude reasoning, it's a showcase of what a modern, no-code automation tool can
+                                        feel like.
                                     </Text>
                                 </motion.div>
 
@@ -339,7 +406,8 @@ export default function About() {
                                     Features
                                 </Heading>
                                 <Text className="mx-auto mt-3 max-w-xl text-gray-600 dark:text-gray-400">
-                                    Everything you need to design, run and refine a workflow.
+                                    Everything you need to design, run and refine a workflow — and a few things you didn't
+                                    expect.
                                 </Text>
                             </motion.div>
 
@@ -357,6 +425,60 @@ export default function About() {
                                         <p className="mt-1.5 text-sm leading-relaxed text-gray-600 dark:text-gray-400">{body}</p>
                                     </motion.div>
                                 ))}
+                            </div>
+                        </Section>
+
+                        {/* AI & Agentic */}
+                        <Section className="mt-20">
+                            <motion.div variants={fadeUp} className="text-center">
+                                <span className="inline-flex items-center gap-1.5 rounded-full border border-indigo-200/70 bg-indigo-50/80 px-4 py-1.5 text-xs font-semibold text-indigo-700 shadow-sm dark:border-indigo-800/60 dark:bg-indigo-950/40 dark:text-indigo-300">
+                                    <Sparkles size={14} aria-hidden="true" />
+                                    Powered by Claude
+                                </span>
+                                <Heading as="h2" size="2xl" weight="bold" className="mt-4 text-gray-900 dark:text-white">
+                                    Real AI, Built In
+                                </Heading>
+                                <Text className="mx-auto mt-3 max-w-2xl text-gray-600 dark:text-gray-400">
+                                    This isn't a canned demo. Fancy Workflows talks to Anthropic's Claude through Prism PHP,
+                                    so the assistant and your nodes are backed by genuine, state-of-the-art reasoning.
+                                </Text>
+                            </motion.div>
+
+                            <div className="mt-10 grid grid-cols-1 gap-5 lg:grid-cols-2">
+                                <motion.div
+                                    variants={fadeUp}
+                                    whileHover={{ y: -4 }}
+                                    className="relative overflow-hidden rounded-2xl border border-indigo-200/60 bg-gradient-to-br from-indigo-50/80 to-purple-50/50 p-6 shadow-sm backdrop-blur transition-colors dark:border-indigo-800/50 dark:from-indigo-950/40 dark:to-purple-950/20"
+                                >
+                                    <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500 to-purple-500 text-white shadow-md shadow-indigo-500/30">
+                                        <MessageSquare size={22} aria-hidden="true" />
+                                    </div>
+                                    <h3 className="mt-4 text-lg font-bold text-gray-900 dark:text-white">Claude Chat Assistant</h3>
+                                    <p className="mt-2 text-sm leading-relaxed text-gray-600 dark:text-gray-300">
+                                        A conversational sidebar lives right inside the editor. Ask Claude to build a workflow
+                                        from a sentence, add or remove steps, or explain what a flow does — it sees your live
+                                        canvas, remembers the conversation, and applies its proposed changes straight to the
+                                        graph. Slash commands like <code className="rounded bg-white/60 px-1 py-0.5 font-mono text-xs text-indigo-700 dark:bg-gray-900/60 dark:text-indigo-300">/build</code> and{' '}
+                                        <code className="rounded bg-white/60 px-1 py-0.5 font-mono text-xs text-indigo-700 dark:bg-gray-900/60 dark:text-indigo-300">/run</code> make it effortless.
+                                    </p>
+                                </motion.div>
+
+                                <motion.div
+                                    variants={fadeUp}
+                                    whileHover={{ y: -4 }}
+                                    className="relative overflow-hidden rounded-2xl border border-purple-200/60 bg-gradient-to-br from-purple-50/80 to-fuchsia-50/50 p-6 shadow-sm backdrop-blur transition-colors dark:border-purple-800/50 dark:from-purple-950/40 dark:to-fuchsia-950/20"
+                                >
+                                    <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-purple-500 to-fuchsia-500 text-white shadow-md shadow-purple-500/30">
+                                        <BrainCircuit size={22} aria-hidden="true" />
+                                    </div>
+                                    <h3 className="mt-4 text-lg font-bold text-gray-900 dark:text-white">Agentic AI Nodes</h3>
+                                    <p className="mt-2 text-sm leading-relaxed text-gray-600 dark:text-gray-300">
+                                        Switch any step into AI Mode and it stops being a static box. At runtime, Claude reasons
+                                        through that node — interpreting its context and deciding the outcome — so a single
+                                        workflow can blend scripted steps with live, intelligent decisions. Every call is routed
+                                        through Prism PHP to Anthropic's most capable model.
+                                    </p>
+                                </motion.div>
                             </div>
                         </Section>
 
@@ -477,7 +599,7 @@ export default function About() {
                 {/* Footer */}
                 <footer className="border-t border-gray-200 px-6 py-8 text-center dark:border-gray-800">
                     <Text className="text-sm text-gray-500 dark:text-gray-400">
-                        Fancy Workflows — automate anything, visually. Built with Laravel, Inertia &amp; React.
+                        Fancy Workflows — automate anything, visually. Built with Laravel, Inertia, React &amp; Claude.
                     </Text>
                 </footer>
             </div>
