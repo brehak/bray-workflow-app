@@ -51,12 +51,11 @@ const TYPE_META = {
     output: { label: 'Output', emoji: '🏁' },
 };
 
+// The outer card (width, border, glass background) is now owned by the parent
+// RightPanel so the chat and config views share one shell; this just lays out
+// the scrollable config body inside it.
 function PanelShell({ children }) {
-    return (
-        <aside className="flex w-72 shrink-0 flex-col gap-4 overflow-y-auto rounded-xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-gray-900">
-            {children}
-        </aside>
-    );
+    return <div className="flex h-full w-full flex-col gap-4 overflow-y-auto p-5">{children}</div>;
 }
 
 export default function NodeConfigPanel({ node, onChange }) {
