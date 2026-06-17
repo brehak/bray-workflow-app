@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Sparkles, SlashSquare, ArrowUp, Check, Play, Trash2 } from 'lucide-react';
+import { CHAT_STORAGE_PREFIX, getSettings } from '../lib/settings';
 
 /**
  * ChatPanel — the "Claude Assistant" conversational sidebar that lives on the
@@ -53,8 +54,8 @@ const COMMAND_PROMPTS = {
 
 // ── Chat history persistence ────────────────────────────────────────────────
 // Keyed by workflow so each workflow keeps its own conversation across visits.
-const STORAGE_PREFIX = 'workflow-chat:';
-const storageKeyFor = (key) => `${STORAGE_PREFIX}${key}`;
+// The prefix is shared with the Settings page (which clears all histories).
+const storageKeyFor = (key) => `${CHAT_STORAGE_PREFIX}${key}`;
 
 const loadStored = (key) => {
     if (!key) return null;
@@ -469,6 +470,9 @@ export default function ChatPanel({ workflow, workflowName, onApplyWorkflow, onR
                         edges: workflowRef.current?.edges ?? [],
                     },
                     conversation_history: history,
+                    // Read live so the "Chat response length" preference applies
+                    // immediately, without remounting the panel.
+                    response_length: getSettings().chatResponseLength,
                 }),
             });
             if (!res.ok) throw new Error(`workflow/chat HTTP ${res.status}`);

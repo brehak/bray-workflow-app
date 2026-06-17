@@ -46,9 +46,11 @@ class WorkflowChatController extends Controller
             'conversation_history'     => ['nullable', 'array'],
             'conversation_history.*.role'    => ['required_with:conversation_history', 'string', 'in:user,assistant'],
             'conversation_history.*.content' => ['required_with:conversation_history', 'string'],
+            'response_length'          => ['nullable', 'string', 'in:short,medium,detailed'],
         ]);
 
         $workflowName = $validated['workflow_name'] ?? 'Workflow';
+        $responseLength = $validated['response_length'] ?? 'medium';
         $workflow = [
             'nodes' => $validated['workflow']['nodes'] ?? [],
             'edges' => $validated['workflow']['edges'] ?? [],
@@ -70,7 +72,7 @@ class WorkflowChatController extends Controller
         try {
             $response = Prism::text()
                 ->using(Provider::Anthropic, self::MODEL)
-                ->withSystemPrompt($this->systemPrompt($workflowName, $workflow))
+                ->withSystemPrompt($this->systemPrompt($workflowName, $workflow, $responseLength))
                 ->withMessages($this->buildMessages($validated['conversation_history'] ?? [], $validated['message']))
                 ->withMaxTokens(8000)
                 ->withClientOptions(['timeout' => 60]) // bound the request so it can't hang
@@ -121,10 +123,12 @@ class WorkflowChatController extends Controller
      * graph schema it must produce so changes apply cleanly to the canvas.
      *
      * @param  array{nodes: array<mixed>, edges: array<mixed>}  $workflow
+     * @param  string  $responseLength  'short' | 'medium' | 'detailed' — controls reply verbosity.
      */
-    private function systemPrompt(string $workflowName, array $workflow): string
+    private function systemPrompt(string $workflowName, array $workflow, string $responseLength = 'medium'): string
     {
         $current = json_encode($workflow, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+        $lengthGuidance = $this->responseLengthGuidance($responseLength);
 
         return <<<PROMPT
 You are Claude, a friendly workflow-building assistant embedded in a visual workflow editor. You help users design, understand, and modify automation workflows on a node-and-edge canvas.
@@ -170,11 +174,26 @@ Always respond with ONLY a single JSON object — no markdown, no code fences, n
   "run": true | false
 }
 
+- {$lengthGuidance}
 - When the user asks you to build, add, modify, remove, connect, or branch steps, set "workflow" to the COMPLETE updated graph (all nodes and all edges, not just the changes). Preserve unrelated existing nodes/edges, ids, and positions. Then describe what changed in "reply".
 - When the user only asks to explain, summarize, review, or optimize — or just chats — set "workflow" to null and put your answer in "reply".
 - Never set "workflow" unless you intend to change the canvas. Returning the same graph unchanged is fine if no change is needed, but prefer null when nothing changed.
 - Set "run" to true ONLY when the user asks to run, execute, start, or test the workflow (e.g. "run it", "run the workflow", "execute this", "give it a test run"). This triggers the actual workflow run on the canvas — do not describe a simulated run yourself; the canvas handles it and shows results in the run feed. You may set both "workflow" and "run" when the user asks to build/modify the workflow and then run it. In all other cases set "run" to false.
 PROMPT;
+    }
+
+    /**
+     * One sentence of guidance for the "reply" field's verbosity, driven by the
+     * user's "Chat response length" preference. Only shapes the prose reply — the
+     * workflow JSON it returns is unaffected.
+     */
+    private function responseLengthGuidance(string $responseLength): string
+    {
+        return match ($responseLength) {
+            'short'    => 'Keep the "reply" very concise — one or two short sentences at most. Skip preamble and lists; just say what you did or answer directly.',
+            'detailed' => 'Make the "reply" thorough and explanatory — walk through your reasoning, call out relevant steps, and use short lists where they help. Still plain English, no JSON outside the object.',
+            default    => 'Keep the "reply" a balanced, moderate length — a few clear sentences. Enough to explain what you did without over-explaining.',
+        };
     }
 
     /**

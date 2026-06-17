@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { MessageSquare, SlidersHorizontal } from 'lucide-react';
+import { MessageSquare, SlidersHorizontal, PanelRightClose, Sparkles } from 'lucide-react';
 import ChatPanel from './ChatPanel';
 import NodeConfigPanel from './NodeConfigPanel';
 
@@ -18,6 +18,10 @@ import NodeConfigPanel from './NodeConfigPanel';
  * The chat lives here permanently (its message history survives view switches)
  * via an always-mounted layer that's hidden, rather than unmounted, when the
  * config view is on top.
+ *
+ * The whole panel can be collapsed to a slim rail. Its initial open/closed state
+ * comes from `defaultOpen` (the "Chat panel default state" setting). Selecting a
+ * node always re-opens it so the config editor is reachable.
  */
 export default function RightPanel({
     selectedNode,
@@ -27,22 +31,50 @@ export default function RightPanel({
     onApplyWorkflow,
     onRunWorkflow,
     chatStorageKey,
+    defaultOpen = true,
 }) {
     const [view, setView] = useState('chat'); // 'chat' | 'config'
+    const [open, setOpen] = useState(defaultOpen);
     const prevNodeId = useRef(selectedNode?.id ?? null);
 
-    // Follow the selection: jump to config when a node is (newly) selected, and
-    // back to chat when the selection is cleared. The explicit toggle can still
-    // override this between selection changes.
+    // Follow the selection: jump to config when a node is (newly) selected — and
+    // re-open the panel if it was collapsed, so the config editor is reachable —
+    // and back to chat when the selection is cleared. The explicit toggle can
+    // still override this between selection changes.
     useEffect(() => {
         const id = selectedNode?.id ?? null;
         if (id !== prevNodeId.current) {
-            setView(id ? 'config' : 'chat');
+            if (id) {
+                setView('config');
+                setOpen(true);
+            } else {
+                setView('chat');
+            }
             prevNodeId.current = id;
         }
     }, [selectedNode]);
 
     const hasNode = Boolean(selectedNode);
+
+    // Collapsed: a slim rail with a button to re-open the assistant.
+    if (!open) {
+        return (
+            <aside className="flex w-12 shrink-0 flex-col items-center gap-2 rounded-xl border border-gray-200 bg-white/80 py-3 shadow-sm backdrop-blur-md dark:border-gray-800 dark:bg-gray-900/70 lg:h-[720px]">
+                <button
+                    type="button"
+                    onClick={() => setOpen(true)}
+                    aria-label="Open Claude assistant"
+                    title="Open Claude assistant"
+                    className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-indigo-500 to-fuchsia-500 text-white shadow-sm transition-transform hover:scale-105"
+                >
+                    <Sparkles size={16} />
+                </button>
+                <span className="mt-1 text-[10px] font-medium uppercase tracking-wider text-gray-400 [writing-mode:vertical-rl] dark:text-gray-500">
+                    Assistant
+                </span>
+            </aside>
+        );
+    }
 
     return (
         <aside className="flex w-80 shrink-0 flex-col overflow-hidden rounded-xl border border-gray-200 bg-white/80 shadow-sm backdrop-blur-md dark:border-gray-800 dark:bg-gray-900/70 lg:h-[720px]">
@@ -62,6 +94,15 @@ export default function RightPanel({
                     icon={<SlidersHorizontal size={14} />}
                     label="Config"
                 />
+                <button
+                    type="button"
+                    onClick={() => setOpen(false)}
+                    aria-label="Collapse panel"
+                    title="Collapse panel"
+                    className="flex shrink-0 items-center justify-center rounded-lg px-2 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-gray-200"
+                >
+                    <PanelRightClose size={16} />
+                </button>
             </div>
 
             {/* Body — chat stays mounted underneath so its history persists; the

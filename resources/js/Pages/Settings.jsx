@@ -16,10 +16,13 @@ import {
     ANIMATION_SPEED_OPTIONS,
     TOAST_POSITION_OPTIONS,
     TOAST_DURATION_OPTIONS,
+    CHAT_PANEL_DEFAULT_OPTIONS,
+    CHAT_RESPONSE_LENGTH_OPTIONS,
     getSettings,
     saveSettings,
     isGuideEnabled,
     setGuideEnabled,
+    clearAllChatHistories,
 } from '../lib/settings';
 import { createZip, slugify } from '../lib/zip';
 
@@ -38,18 +41,20 @@ const ACCENT_SWATCH = {
 const container = { hidden: {}, visible: { transition: { staggerChildren: 0.08, delayChildren: 0.05 } } };
 const item = { hidden: { opacity: 0, y: 18 }, visible: { opacity: 1, y: 0, transition: { duration: 0.4, ease: 'easeOut' } } };
 
-// A settings card.
+// A settings group: the title + subtitle act as a label ABOVE the card, and the
+// card itself holds only the controls.
 function Section({ title, description, children }) {
     return (
-        <motion.section
-            variants={item}
-            className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm transition-colors dark:border-gray-800 dark:bg-gray-900"
-        >
-            <Heading as="h2" size="lg" weight="semibold">
-                {title}
-            </Heading>
-            {description && <Text className="mt-1 text-sm text-gray-500 dark:text-gray-400">{description}</Text>}
-            <div className="mt-5 space-y-5">{children}</div>
+        <motion.section variants={item}>
+            <div className="mb-3 px-1">
+                <Heading as="h2" size="lg" weight="semibold">
+                    {title}
+                </Heading>
+                {description && <Text className="mt-1 text-sm text-gray-500 dark:text-gray-400">{description}</Text>}
+            </div>
+            <div className="space-y-5 rounded-2xl border border-gray-200 bg-white p-6 shadow-sm transition-colors dark:border-gray-800 dark:bg-gray-900">
+                {children}
+            </div>
         </motion.section>
     );
 }
@@ -72,6 +77,7 @@ export default function Settings({ workflows = [] }) {
     const [settings, setSettings] = useState(() => getSettings());
     const [guideOn, setGuideOn] = useState(() => isGuideEnabled());
     const [pendingClear, setPendingClear] = useState(false);
+    const [pendingClearChats, setPendingClearChats] = useState(false);
     const [status, setStatus] = useState(null); // { type: 'success' | 'error', text }
 
     // Persist a patch and reflect it in local state.
@@ -128,6 +134,16 @@ export default function Settings({ workflows = [] }) {
         a.remove();
         URL.revokeObjectURL(url);
         setStatus({ type: 'success', text: `Exported ${files.length} workflow${files.length === 1 ? '' : 's'} as a ZIP.` });
+    };
+
+    // Wipe every persisted Claude chat history (after inline confirmation).
+    const clearChatHistories = () => {
+        const count = clearAllChatHistories();
+        setPendingClearChats(false);
+        setStatus({
+            type: 'success',
+            text: count > 0 ? `Cleared ${count} chat histor${count === 1 ? 'y' : 'ies'}.` : 'No chat histories to clear.',
+        });
     };
 
     // Delete every saved workflow (after confirmation), then refresh.
@@ -298,6 +314,102 @@ export default function Settings({ workflows = [] }) {
                                     onCheckedChange={(c) => update({ showStepCounts: c })}
                                     aria-label="Show step counts on cards"
                                 />
+                            </Row>
+                        </Section>
+
+                        {/* ── Claude AI Settings ───────────────────────────────── */}
+                        <Section title="Claude AI Settings" description="How the built-in Claude assistant looks and behaves.">
+                            <Row
+                                label="Chat panel default state"
+                                hint="Whether the Claude chat panel is open when the workflow editor first loads."
+                            >
+                                <div className="flex items-center justify-end gap-2">
+                                    <Text className="text-xs text-gray-500 dark:text-gray-400">
+                                        {settings.chatPanelDefault === 'closed' ? 'Stays closed' : 'Opens automatically'}
+                                    </Text>
+                                    <Switch
+                                        checked={settings.chatPanelDefault !== 'closed'}
+                                        onCheckedChange={(c) => update({ chatPanelDefault: c ? 'auto' : 'closed' })}
+                                        aria-label="Chat panel default state"
+                                    />
+                                </div>
+                            </Row>
+
+                            <Row label="Chat response length" hint="How detailed Claude's replies in the chat panel should be.">
+                                <MultiSwitch
+                                    list={CHAT_RESPONSE_LENGTH_OPTIONS}
+                                    value={settings.chatResponseLength}
+                                    onValueChange={(v) => update({ chatResponseLength: v })}
+                                    aria-label="Chat response length"
+                                />
+                            </Row>
+
+                            <Row
+                                label="Force Demo Mode"
+                                hint="Always use built-in mock data, even when an Anthropic API key is configured."
+                            >
+                                <Switch
+                                    checked={settings.forceDemo}
+                                    onCheckedChange={(c) => update({ forceDemo: c })}
+                                    aria-label="Force Demo Mode"
+                                />
+                            </Row>
+
+                            <Row
+                                label="Show AI reasoning in run feed"
+                                hint="Show Claude's 🤖 step-by-step narration lines in the run feed when a workflow runs."
+                            >
+                                <Switch
+                                    checked={settings.showAiReasoning}
+                                    onCheckedChange={(c) => update({ showAiReasoning: c })}
+                                    aria-label="Show AI reasoning in run feed"
+                                />
+                            </Row>
+
+                            <Row
+                                label="Clear all chat histories"
+                                hint="Permanently delete every saved Claude conversation across all workflows."
+                            >
+                                <AnimatePresence mode="wait" initial={false}>
+                                    {pendingClearChats ? (
+                                        <motion.div
+                                            key="confirm-chats"
+                                            initial={{ opacity: 0, x: 8 }}
+                                            animate={{ opacity: 1, x: 0 }}
+                                            exit={{ opacity: 0, x: 8 }}
+                                            transition={{ duration: 0.15 }}
+                                            className="flex items-center justify-end gap-2"
+                                        >
+                                            <Text className="text-xs text-gray-500 dark:text-gray-400">Clear all chats?</Text>
+                                            <Button variant="primary" color="red" size="sm" onClick={clearChatHistories}>
+                                                Clear
+                                            </Button>
+                                            <Button
+                                                variant="outline"
+                                                color="gray"
+                                                size="sm"
+                                                onClick={() => setPendingClearChats(false)}
+                                            >
+                                                Cancel
+                                            </Button>
+                                        </motion.div>
+                                    ) : (
+                                        <motion.div
+                                            key="clear-chats"
+                                            initial={{ opacity: 0 }}
+                                            animate={{ opacity: 1 }}
+                                            exit={{ opacity: 0 }}
+                                            transition={{ duration: 0.15 }}
+                                        >
+                                            <Button variant="outline" color="gray" onClick={() => setPendingClearChats(true)}>
+                                                <span className="inline-flex items-center gap-2">
+                                                    <Trash2 size={16} aria-hidden="true" />
+                                                    Clear histories
+                                                </span>
+                                            </Button>
+                                        </motion.div>
+                                    )}
+                                </AnimatePresence>
                             </Row>
                         </Section>
 

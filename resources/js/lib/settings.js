@@ -14,6 +14,9 @@ export const SETTINGS_KEY = 'workflow-settings';
 export const GUIDE_SEEN_KEY = 'workflow-guide-seen';
 // Fired (same-tab) whenever settings change, so open views can react if they want.
 export const SETTINGS_EVENT = 'workflow-settings-changed';
+// Prefix for the per-workflow chat histories ChatPanel persists (one key each).
+// Defined here so the Settings page can wipe them all in one place.
+export const CHAT_STORAGE_PREFIX = 'workflow-chat:';
 
 // Option lists — also used to render the Settings controls.
 export const ACCENT_OPTIONS = [
@@ -84,6 +87,18 @@ export const TOAST_DURATION_OPTIONS = [
 // >1 is slower, <1 is faster.
 export const ANIMATION_SPEED_FACTORS = { slow: 1.8, normal: 1, fast: 0.5 };
 
+// ── Claude AI settings ──────────────────────────────────────────────────────
+export const CHAT_PANEL_DEFAULT_OPTIONS = [
+    { value: 'auto', label: 'Opens automatically' },
+    { value: 'closed', label: 'Stays closed' },
+];
+
+export const CHAT_RESPONSE_LENGTH_OPTIONS = [
+    { value: 'short', label: 'Short' },
+    { value: 'medium', label: 'Medium' },
+    { value: 'detailed', label: 'Detailed' },
+];
+
 export const DEFAULT_SETTINGS = {
     accent: 'indigo',
     autoSaveInterval: '30', // seconds, or 'off'
@@ -95,6 +110,11 @@ export const DEFAULT_SETTINGS = {
     toastPosition: 'bottom-right', // 'bottom-right' | 'bottom-left' | 'top-right' | 'top-left'
     toastDuration: '3000', // ms, as a string ('2000' | '3000' | '5000')
     showStepCounts: true, // show "X steps · Y connections" on cards
+    // ── Claude AI ──
+    chatPanelDefault: 'auto', // 'auto' (open on load) | 'closed' (open manually)
+    chatResponseLength: 'medium', // 'short' | 'medium' | 'detailed' — sent to the chat API
+    forceDemo: false, // force Demo Mode even when an API key is configured
+    showAiReasoning: true, // show Claude's 🤖 narration lines in the run feed
 };
 
 /** Read the merged settings (defaults + stored overrides). Safe pre-mount. */
@@ -157,5 +177,25 @@ export function setGuideEnabled(enabled) {
         else window.localStorage.setItem(GUIDE_SEEN_KEY, '1');
     } catch {
         // ignore
+    }
+}
+
+// ── Chat histories (ChatPanel's per-workflow conversations) ─────────────────
+/**
+ * Delete every persisted Claude chat history (all `workflow-chat:*` keys).
+ * Returns the number of conversations cleared. Best-effort — storage may be
+ * unavailable.
+ */
+export function clearAllChatHistories() {
+    try {
+        const keys = [];
+        for (let i = 0; i < window.localStorage.length; i++) {
+            const key = window.localStorage.key(i);
+            if (key && key.startsWith(CHAT_STORAGE_PREFIX)) keys.push(key);
+        }
+        keys.forEach((key) => window.localStorage.removeItem(key));
+        return keys.length;
+    } catch {
+        return 0;
     }
 }

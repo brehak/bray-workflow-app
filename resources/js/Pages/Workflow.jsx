@@ -2015,7 +2015,14 @@ function WorkflowEditor() {
         });
     }, []);
     const handleLog = useCallback(
-        (event, node) => appendFeed({ level: event.level ?? 'info', text: event.message ?? '', nodeId: event.nodeId ?? node?.id }),
+        (event, node) => {
+            const text = event.message ?? '';
+            // Respect the "Show AI reasoning in run feed" preference (read live so a
+            // change applies on the next run): when off, drop Claude's 🤖 narration
+            // lines so only the standard node-execution messages remain.
+            if (text.startsWith('🤖') && !getSettings().showAiReasoning) return;
+            appendFeed({ level: event.level ?? 'info', text, nodeId: event.nodeId ?? node?.id });
+        },
         [appendFeed],
     );
 
@@ -2136,7 +2143,14 @@ function WorkflowEditor() {
 
     // Ask the server (once) whether an Anthropic key is configured, to pick AI
     // Mode vs Demo Mode. Any failure defaults to Demo Mode so runs never break.
+    // The "Force Demo Mode" preference short-circuits this: when on, we stay in
+    // Demo Mode (mock data, "Demo Mode" badge) even if a key exists.
     useEffect(() => {
+        if (userSettings.forceDemo) {
+            setAiEnabled(false);
+            setAiModeEnabled(false);
+            return;
+        }
         let active = true;
         fetch('/api/agent/status', { headers: { Accept: 'application/json' } })
             .then((r) => (r.ok ? r.json() : Promise.reject(r)))
@@ -2154,7 +2168,7 @@ function WorkflowEditor() {
         return () => {
             active = false;
         };
-    }, []);
+    }, [userSettings.forceDemo]);
 
     // A node-deletion awaiting confirmation when "Confirm before deleting nodes"
     // is on: { next: <graph with the node removed>, removed: [<node>, …] }.
@@ -3262,6 +3276,8 @@ function WorkflowEditor() {
                         onApplyWorkflow={applyAiWorkflow}
                         onRunWorkflow={triggerCanvasRun}
                         chatStorageKey={chatStorageKey}
+                        // "Chat panel default state": open on load unless set to "closed".
+                        defaultOpen={userSettings.chatPanelDefault !== 'closed'}
                     />
                     </div>
                 </main>
