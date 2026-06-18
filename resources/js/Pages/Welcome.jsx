@@ -35,6 +35,12 @@ export default function Welcome() {
                     </div>
                     <div className="flex items-center gap-2">
                         <Link
+                            href="/analytics"
+                            className="hidden rounded-full px-3 py-1.5 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-100/80 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-gray-800/80 dark:hover:text-white sm:inline-flex"
+                        >
+                            Analytics
+                        </Link>
+                        <Link
                             href="/about"
                             className="hidden rounded-full px-3 py-1.5 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-100/80 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-gray-800/80 dark:hover:text-white sm:inline-flex"
                         >

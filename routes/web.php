@@ -5,6 +5,7 @@ use Inertia\Inertia;
 use App\Http\Controllers\WorkflowController;
 use App\Http\Controllers\AgentNodeController;
 use App\Http\Controllers\WorkflowChatController;
+use App\Http\Controllers\AnalyticsController;
 
 Route::get('/', function () {
     return Inertia::render('Welcome');
@@ -27,6 +28,9 @@ Route::get('/settings', function () {
     $workflows = \App\Models\Workflow::latest()->get();
     return Inertia::render('Settings', ['workflows' => $workflows]);
 });
+
+// Workflow analytics dashboard — aggregates the saved workflows into charts.
+Route::get('/analytics', [AnalyticsController::class, 'index']);
 
 Route::apiResource('workflows', WorkflowController::class);
 

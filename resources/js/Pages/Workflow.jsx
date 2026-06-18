@@ -39,6 +39,7 @@ import ThemeToggle from '../Components/ThemeToggle';
 import Tooltip from '../Components/Tooltip';
 import { applyFriendlyNodeLabels } from '../lib/friendlyPalette';
 import { getSettings, autoSaveIntervalMs, animationSpeedFactor, toastDurationMs } from '../lib/settings';
+import { incrementRunsCompleted } from '../lib/runs';
 import '../../css/flow-animations.css';
 
 const templates = {
@@ -2097,6 +2098,8 @@ function WorkflowEditor() {
                     clearTimeout(stopTimer.current);
                     stopTimer.current = null;
                 }
+                // A run reached its end — tally it for the analytics dashboard.
+                incrementRunsCompleted();
                 setRunning(false);
                 return;
             }

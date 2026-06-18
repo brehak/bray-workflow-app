@@ -1,7 +1,7 @@
 import { Head, Link, router } from '@inertiajs/react';
 import { Badge, Button, Heading, Text } from '@particle-academy/react-fancy';
 import { motion, AnimatePresence } from 'framer-motion';
-import { AlertTriangle, Check, Search, X, Settings } from 'lucide-react';
+import { AlertTriangle, BarChart3, Check, Search, X, Settings } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import GradientDivider from '../Components/GradientDivider';
 import Logo from '../Components/Logo';
@@ -168,15 +168,20 @@ export default function WorkflowList({ workflows }) {
         });
     };
 
+    // Initial filter state can be seeded from the URL — the Analytics charts link
+    // here with `?tag=` / `?q=` to pre-filter by a tag or template type.
+    const initialParams =
+        typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : new URLSearchParams();
+
     // Tag filtering. `activeTag === null` means "All". Every tag used across the
     // saved workflows becomes a filter chip.
-    const [activeTag, setActiveTag] = useState(null);
+    const [activeTag, setActiveTag] = useState(() => initialParams.get('tag') || null);
     const allTags = [...new Set(workflows.flatMap((w) => w.tags ?? []))].sort();
     const toggleTag = (tag) => setActiveTag((cur) => (cur === tag ? null : tag));
 
     // Free-text search over the saved workflows — case-insensitive, matching
     // against name, description, and tags. Combined with the tag filter above.
-    const [query, setQuery] = useState('');
+    const [query, setQuery] = useState(() => initialParams.get('q') || '');
     const q = query.trim().toLowerCase();
     const matchesQuery = (w) => {
         if (!q) return true;
@@ -206,6 +211,14 @@ export default function WorkflowList({ workflows }) {
                             </div>
                         </div>
                         <div className="flex items-center gap-3">
+                            <Link
+                                href="/analytics"
+                                aria-label="Analytics"
+                                title="Analytics"
+                                className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-gray-200 bg-gray-100/80 text-gray-700 transition-colors hover:bg-gray-200/80 dark:border-gray-700 dark:bg-gray-800/80 dark:text-gray-200 dark:hover:bg-gray-700/80"
+                            >
+                                <BarChart3 size={18} aria-hidden="true" />
+                            </Link>
                             <Link
                                 href="/settings"
                                 aria-label="Settings"
