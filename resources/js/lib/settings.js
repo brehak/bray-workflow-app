@@ -99,6 +99,39 @@ export const CHAT_RESPONSE_LENGTH_OPTIONS = [
     { value: 'detailed', label: 'Detailed' },
 ];
 
+// ── Analytics settings ──────────────────────────────────────────────────────
+// Date-range keys mirror the Analytics page's RANGES (`7`/`30`/`90`/`all`).
+export const ANALYTICS_RANGE_OPTIONS = [
+    { value: '7', label: 'Last 7 days' },
+    { value: '30', label: 'Last 30 days' },
+    { value: '90', label: 'Last 90 days' },
+    { value: 'all', label: 'All time' },
+];
+
+export const HEATMAP_COLOR_OPTIONS = [
+    { value: 'purple', label: 'Purple' },
+    { value: 'blue', label: 'Blue' },
+    { value: 'green', label: 'Green' },
+    { value: 'orange', label: 'Orange' },
+];
+
+export const ACTIVITY_FEED_LENGTH_OPTIONS = [
+    { value: '5', label: '5' },
+    { value: '8', label: '8' },
+    { value: '10', label: '10' },
+    { value: '15', label: '15' },
+];
+
+// Per-chart visibility toggles. Each `key` is also the settings field it reads/
+// writes, so the Settings page and the Analytics page stay in lock-step.
+export const ANALYTICS_CHART_TOGGLES = [
+    { key: 'showChart_templateDistribution', label: 'Show template distribution chart' },
+    { key: 'showChart_tags', label: 'Show tags chart' },
+    { key: 'showChart_workflowsOverTime', label: 'Show workflows over time chart' },
+    { key: 'showChart_heatmap', label: 'Show heatmap' },
+    { key: 'showChart_recentActivity', label: 'Show recent activity feed' },
+];
+
 export const DEFAULT_SETTINGS = {
     accent: 'indigo',
     autoSaveInterval: '30', // seconds, or 'off'
@@ -115,6 +148,15 @@ export const DEFAULT_SETTINGS = {
     chatResponseLength: 'medium', // 'short' | 'medium' | 'detailed' — sent to the chat API
     forceDemo: false, // force Demo Mode even when an API key is configured
     showAiReasoning: true, // show Claude's 🤖 narration lines in the run feed
+    // ── Analytics ──
+    analyticsDefaultRange: 'all', // '7' | '30' | '90' | 'all' — range selected on page load
+    heatmapColor: 'purple', // 'purple' | 'blue' | 'green' | 'orange' — activity heatmap squares
+    showChart_templateDistribution: true,
+    showChart_tags: true,
+    showChart_workflowsOverTime: true,
+    showChart_heatmap: true,
+    showChart_recentActivity: true,
+    activityFeedLength: '8', // number of items in the recent activity feed (as a string)
 };
 
 /** Read the merged settings (defaults + stored overrides). Safe pre-mount. */

@@ -18,6 +18,10 @@ import {
     TOAST_DURATION_OPTIONS,
     CHAT_PANEL_DEFAULT_OPTIONS,
     CHAT_RESPONSE_LENGTH_OPTIONS,
+    ANALYTICS_RANGE_OPTIONS,
+    HEATMAP_COLOR_OPTIONS,
+    ACTIVITY_FEED_LENGTH_OPTIONS,
+    ANALYTICS_CHART_TOGGLES,
     getSettings,
     saveSettings,
     isGuideEnabled,
@@ -35,6 +39,14 @@ const ACCENT_SWATCH = {
     orange: 'bg-orange-500',
     pink: 'bg-pink-500',
     teal: 'bg-teal-500',
+};
+
+// Solid swatch class per heatmap color scheme — for the Analytics color picker.
+const HEATMAP_SWATCH = {
+    purple: 'bg-purple-500',
+    blue: 'bg-blue-500',
+    green: 'bg-green-500',
+    orange: 'bg-orange-500',
 };
 
 // Entrance animation — sections fade and rise in, staggered.
@@ -313,6 +325,59 @@ export default function Settings({ workflows = [] }) {
                                     checked={settings.showStepCounts}
                                     onCheckedChange={(c) => update({ showStepCounts: c })}
                                     aria-label="Show step counts on cards"
+                                />
+                            </Row>
+                        </Section>
+
+                        {/* ── Analytics ────────────────────────────────────────── */}
+                        <Section title="Analytics" description="What the analytics dashboard shows and how it looks.">
+                            <Row label="Default date range" hint="The range selected when you open the Analytics page.">
+                                <MultiSwitch
+                                    list={ANALYTICS_RANGE_OPTIONS}
+                                    value={settings.analyticsDefaultRange}
+                                    onValueChange={(v) => update({ analyticsDefaultRange: v })}
+                                    aria-label="Default analytics date range"
+                                />
+                            </Row>
+
+                            <Row label="Heatmap color scheme" hint="Color used for the activity heatmap squares.">
+                                <div className="flex flex-wrap items-center justify-end gap-2">
+                                    {HEATMAP_COLOR_OPTIONS.map((opt) => {
+                                        const selected = settings.heatmapColor === opt.value;
+                                        return (
+                                            <button
+                                                key={opt.value}
+                                                type="button"
+                                                onClick={() => update({ heatmapColor: opt.value })}
+                                                title={opt.label}
+                                                aria-label={opt.label}
+                                                aria-pressed={selected}
+                                                className={`h-7 w-7 rounded-full ${HEATMAP_SWATCH[opt.value]} ring-2 ring-offset-2 ring-offset-white transition-all hover:scale-110 dark:ring-offset-gray-900 ${
+                                                    selected ? 'ring-gray-900 dark:ring-white' : 'ring-transparent'
+                                                }`}
+                                            />
+                                        );
+                                    })}
+                                </div>
+                            </Row>
+
+                            {/* Per-chart visibility — one toggle per Analytics section. */}
+                            {ANALYTICS_CHART_TOGGLES.map((chart) => (
+                                <Row key={chart.key} label={chart.label}>
+                                    <Switch
+                                        checked={settings[chart.key]}
+                                        onCheckedChange={(c) => update({ [chart.key]: c })}
+                                        aria-label={chart.label}
+                                    />
+                                </Row>
+                            ))}
+
+                            <Row label="Activity feed length" hint="How many items the recent activity feed shows.">
+                                <MultiSwitch
+                                    list={ACTIVITY_FEED_LENGTH_OPTIONS}
+                                    value={settings.activityFeedLength}
+                                    onValueChange={(v) => update({ activityFeedLength: v })}
+                                    aria-label="Activity feed length"
                                 />
                             </Row>
                         </Section>

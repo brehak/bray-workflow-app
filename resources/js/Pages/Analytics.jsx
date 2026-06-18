@@ -23,6 +23,7 @@ import NavButton from '../Components/NavButton';
 import ThemeToggle from '../Components/ThemeToggle';
 import { useTheme } from '../hooks/useTheme';
 import { getRunsCompleted } from '../lib/runs';
+import { getSettings } from '../lib/settings';
 import { createZip, slugify } from '../lib/zip';
 
 // Register only the chart types this page renders (pie, bar, line, calendar
@@ -68,6 +69,28 @@ function accentFor(name) {
     for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
     return PALETTE[h % PALETTE.length];
 }
+
+// Heatmap color ramps per scheme (settings.heatmapColor). Each is light→dark
+// graded; the order is reversed for dark mode so low counts stay subtle and high
+// counts read bright against the dark card.
+const HEATMAP_SCALES = {
+    purple: {
+        light: ['#f3e8ff', '#d8b4fe', '#c084fc', '#a855f7', '#7e22ce'],
+        dark: ['#581c87', '#7e22ce', '#a855f7', '#c084fc', '#d8b4fe'],
+    },
+    blue: {
+        light: ['#dbeafe', '#93c5fd', '#60a5fa', '#3b82f6', '#1d4ed8'],
+        dark: ['#1e3a8a', '#1d4ed8', '#3b82f6', '#60a5fa', '#93c5fd'],
+    },
+    green: {
+        light: ['#dcfce7', '#86efac', '#4ade80', '#22c55e', '#15803d'],
+        dark: ['#14532d', '#15803d', '#22c55e', '#4ade80', '#86efac'],
+    },
+    orange: {
+        light: ['#ffedd5', '#fdba74', '#fb923c', '#f97316', '#c2410c'],
+        dark: ['#7c2d12', '#c2410c', '#f97316', '#fb923c', '#fdba74'],
+    },
+};
 
 // Date-range filter options. `days: null` means "All time".
 const RANGES = [
@@ -325,9 +348,17 @@ export default function Analytics({ workflows }) {
     const axisColor = isDark ? '#9ca3af' : '#6b7280';
     const splitColor = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)';
 
-    // Active date range. Filtering and all aggregation happen client-side so
-    // switching ranges re-computes every chart and stat instantly.
-    const [range, setRange] = useState('all');
+    // User preferences (default range, heatmap color, chart visibility, feed
+    // length). Read once on mount — the Settings page persists these to
+    // localStorage and a reload picks up any changes.
+    const [settings] = useState(() => getSettings());
+
+    // Active date range — seeded from the saved default, falling back to "all"
+    // if the stored value is somehow unknown. Filtering and all aggregation
+    // happen client-side so switching ranges re-computes everything instantly.
+    const [range, setRange] = useState(() =>
+        RANGES.some((r) => r.key === settings.analyticsDefaultRange) ? settings.analyticsDefaultRange : 'all',
+    );
     const activeRange = RANGES.find((r) => r.key === range) ?? RANGES[3];
 
     const filtered = useMemo(() => filterByRange(workflows, activeRange.days), [workflows, activeRange.days]);
@@ -338,11 +369,16 @@ export default function Analytics({ workflows }) {
     // it intentionally ignores the range filter (a year grid is its whole point).
     const heatmap = useMemo(() => buildHeatmap(workflows), [workflows]);
 
-    // Recent activity — the 8 most recently saved/modified workflows (by
-    // updated_at). Filter-independent: "recent" is inherently recent.
+    // Recent activity — the N most recently saved/modified workflows (by
+    // updated_at), where N is the saved feed length. Filter-independent:
+    // "recent" is inherently recent.
+    const feedLength = useMemo(() => {
+        const n = parseInt(settings.activityFeedLength, 10);
+        return Number.isFinite(n) ? n : 8;
+    }, [settings.activityFeedLength]);
     const recent = useMemo(
-        () => [...workflows].sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at)).slice(0, 8),
-        [workflows],
+        () => [...workflows].sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at)).slice(0, feedLength),
+        [workflows, feedLength],
     );
 
     // Clicking a slice/bar jumps to the workflow list with that template/tag
@@ -528,9 +564,8 @@ export default function Analytics({ workflows }) {
     const heatmapOption = useMemo(() => {
         const cardBg = isDark ? '#111827' : '#ffffff';
         const emptyCell = isDark ? 'rgba(148,163,184,0.12)' : '#ebedf0';
-        const scale = isDark
-            ? ['#312e81', '#4338ca', '#6366f1', '#818cf8', '#a5b4fc']
-            : ['#dbeafe', '#a5b4fc', '#818cf8', '#6366f1', '#4338ca'];
+        const scheme = HEATMAP_SCALES[settings.heatmapColor] ?? HEATMAP_SCALES.purple;
+        const scale = isDark ? scheme.dark : scheme.light;
         return {
             tooltip: {
                 formatter: (p) => {
@@ -586,7 +621,7 @@ export default function Analytics({ workflows }) {
                 itemStyle: { borderColor: cardBg, borderWidth: 3 },
             },
         };
-    }, [heatmap, axisColor, isDark]);
+    }, [heatmap, axisColor, isDark, settings.heatmapColor]);
 
     const hasData = workflows.length > 0;
 
@@ -794,57 +829,64 @@ export default function Analytics({ workflows }) {
 
                                     {/* Workflows by template type — donut. Click a
                                         slice to jump to that template, pre-filtered. */}
-                                    <ChartCard title="Workflows by template type" icon={Layers}>
-                                        {byTemplate.length > 0 ? (
-                                            <>
-                                                <EChart
-                                                    option={templateOption}
-                                                    theme={chartTheme}
-                                                    style={{ height: 320 }}
-                                                    onEvents={{ click: (p) => goToTemplate(p.name) }}
-                                                />
-                                                <Text className="mt-1 text-center text-[11px] text-gray-400 dark:text-gray-500">
-                                                    Click a slice to view those workflows
-                                                </Text>
-                                            </>
-                                        ) : (
-                                            <EmptyChart message="No workflows in this range." />
-                                        )}
-                                    </ChartCard>
+                                    {settings.showChart_templateDistribution && (
+                                        <ChartCard title="Workflows by template type" icon={Layers}>
+                                            {byTemplate.length > 0 ? (
+                                                <>
+                                                    <EChart
+                                                        option={templateOption}
+                                                        theme={chartTheme}
+                                                        style={{ height: 320 }}
+                                                        onEvents={{ click: (p) => goToTemplate(p.name) }}
+                                                    />
+                                                    <Text className="mt-1 text-center text-[11px] text-gray-400 dark:text-gray-500">
+                                                        Click a slice to view those workflows
+                                                    </Text>
+                                                </>
+                                            ) : (
+                                                <EmptyChart message="No workflows in this range." />
+                                            )}
+                                        </ChartCard>
+                                    )}
 
                                     {/* Workflows by tag — horizontal bar. Click a bar to
                                         jump to that tag, pre-filtered. */}
-                                    <ChartCard title="Workflows by tag" icon={TagIcon}>
-                                        {byTag.length > 0 ? (
-                                            <>
-                                                <EChart
-                                                    option={tagOption}
-                                                    theme={chartTheme}
-                                                    style={{ height: 320 }}
-                                                    onEvents={{ click: (p) => goToTag(p.name) }}
-                                                />
-                                                <Text className="mt-1 text-center text-[11px] text-gray-400 dark:text-gray-500">
-                                                    Click a bar to view those workflows
-                                                </Text>
-                                            </>
-                                        ) : (
-                                            <EmptyChart message="No tagged workflows in this range." />
-                                        )}
-                                    </ChartCard>
+                                    {settings.showChart_tags && (
+                                        <ChartCard title="Workflows by tag" icon={TagIcon}>
+                                            {byTag.length > 0 ? (
+                                                <>
+                                                    <EChart
+                                                        option={tagOption}
+                                                        theme={chartTheme}
+                                                        style={{ height: 320 }}
+                                                        onEvents={{ click: (p) => goToTag(p.name) }}
+                                                    />
+                                                    <Text className="mt-1 text-center text-[11px] text-gray-400 dark:text-gray-500">
+                                                        Click a bar to view those workflows
+                                                    </Text>
+                                                </>
+                                            ) : (
+                                                <EmptyChart message="No tagged workflows in this range." />
+                                            )}
+                                        </ChartCard>
+                                    )}
 
                                     {/* Workflows created over time — line. */}
-                                    <ChartCard title="Workflows created over time" icon={TrendingUp} className="lg:col-span-2">
-                                        {overTime.length > 0 ? (
-                                            <EChart option={overTimeOption} theme={chartTheme} style={{ height: 320 }} />
-                                        ) : (
-                                            <EmptyChart message="No workflows created in this range." />
-                                        )}
-                                    </ChartCard>
+                                    {settings.showChart_workflowsOverTime && (
+                                        <ChartCard title="Workflows created over time" icon={TrendingUp} className="lg:col-span-2">
+                                            {overTime.length > 0 ? (
+                                                <EChart option={overTimeOption} theme={chartTheme} style={{ height: 320 }} />
+                                            ) : (
+                                                <EmptyChart message="No workflows created in this range." />
+                                            )}
+                                        </ChartCard>
+                                    )}
                                 </motion.div>
                             </AnimatePresence>
 
                             {/* Contribution heatmap — fixed trailing 52 weeks of all
                                 activity, independent of the range filter above. */}
+                            {settings.showChart_heatmap && (
                             <motion.section
                                 initial={{ opacity: 0, y: 24 }}
                                 animate={{ opacity: 1, y: 0 }}
@@ -874,9 +916,11 @@ export default function Analytics({ workflows }) {
                                     </div>
                                 </div>
                             </motion.section>
+                            )}
 
                             {/* Recent activity feed — most recently saved/modified
                                 workflows (independent of the range filter). */}
+                            {settings.showChart_recentActivity && (
                             <motion.section
                                 initial={{ opacity: 0, y: 24 }}
                                 animate={{ opacity: 1, y: 0 }}
@@ -931,6 +975,7 @@ export default function Analytics({ workflows }) {
                                     ))}
                                 </ul>
                             </motion.section>
+                            )}
                         </>
                     )}
                 </main>
