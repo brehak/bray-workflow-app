@@ -10,6 +10,7 @@
         "inertiajs/inertia-laravel": "^3.1",
         "laravel/framework": "^13.8",
         "laravel/tinker": "^3.0",
+        "particle-academy/fancy-seo": "*",
         "prism-php/prism": "^0.100.1"
     },
     "require-dev": {

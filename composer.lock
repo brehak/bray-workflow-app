@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "c443f0e9b6debc39759e7f7470f7c63c",
+    "content-hash": "b40ae56c646cf5b65e831721783c2679",
     "packages": [
         {
             "name": "brick/math",
@@ -2613,6 +2613,79 @@
                 }
             ],
             "time": "2026-02-16T23:10:27+00:00"
+        },
+        {
+            "name": "particle-academy/fancy-seo",
+            "version": "v0.2.1",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/Particle-Academy/fancy-seo.git",
+                "reference": "fa2c45ed96c4aab8e0faad9e0af42242a2514074"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/Particle-Academy/fancy-seo/zipball/fa2c45ed96c4aab8e0faad9e0af42242a2514074",
+                "reference": "fa2c45ed96c4aab8e0faad9e0af42242a2514074",
+                "shasum": ""
+            },
+            "require": {
+                "illuminate/contracts": "^11.0|^12.0|^13.0",
+                "illuminate/http": "^11.0|^12.0|^13.0",
+                "illuminate/routing": "^11.0|^12.0|^13.0",
+                "illuminate/support": "^11.0|^12.0|^13.0",
+                "illuminate/view": "^11.0|^12.0|^13.0",
+                "php": "^8.2"
+            },
+            "require-dev": {
+                "laravel/pint": "^1.26",
+                "orchestra/testbench": "^9.0|^10.0|^11.0",
+                "pestphp/pest": "^3.0|^4.0"
+            },
+            "type": "library",
+            "extra": {
+                "laravel": {
+                    "aliases": {
+                        "FancySeo": "FancySeo\\Facades\\FancySeo"
+                    },
+                    "providers": [
+                        "FancySeo\\FancySeoServiceProvider"
+                    ]
+                }
+            },
+            "autoload": {
+                "psr-4": {
+                    "FancySeo\\": "src/"
+                }
+            },
+            "notification-url": "https://packagist.org/downloads/",
+            "license": [
+                "MIT"
+            ],
+            "authors": [
+                {
+                    "name": "Particle Academy",
+                    "homepage": "https://github.com/Particle-Academy"
+                }
+            ],
+            "description": "Server-rendered SEO + crawlability for Laravel + Inertia apps — per-route meta/Open Graph/Twitter/JSON-LD on the first byte, dynamic sitemap.xml / robots.txt / llms.txt, and per-page Markdown. The PHP baseline that pairs with @particle-academy/fancy-inertia's <Seo>.",
+            "homepage": "https://github.com/Particle-Academy/fancy-seo",
+            "keywords": [
+                "JSON-LD",
+                "SSR",
+                "Sitemap",
+                "inertia",
+                "laravel",
+                "llms-txt",
+                "open-graph",
+                "particle-academy",
+                "robots",
+                "seo"
+            ],
+            "support": {
+                "issues": "https://github.com/Particle-Academy/fancy-seo/issues",
+                "source": "https://github.com/Particle-Academy/fancy-seo"
+            },
+            "time": "2026-06-15T08:37:51+00:00"
         },
         {
             "name": "phpoption/phpoption",

@@ -9,6 +9,7 @@ import { createRoot } from 'react-dom/client';
 import { AnimatePresence, motion } from 'framer-motion';
 import { getInitialTheme, applyTheme } from './hooks/useTheme';
 import NavigationProgress from './Components/NavigationProgress';
+import AppUpdateAlert from './Components/AppUpdateAlert';
 
 // Apply the stored (or system) theme before the app renders so there's no flash
 // of the wrong theme on load or when navigating between pages.
@@ -57,6 +58,7 @@ function Root({ App, props }) {
     return (
         <>
             <NavigationProgress />
+            <AppUpdateAlert />
             <App {...props}>
                 {({ Component, props: pageProps, key }) => (
                     <AnimatedPage Component={Component} props={pageProps} pageKey={key} />
