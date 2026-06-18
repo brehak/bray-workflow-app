@@ -2,6 +2,7 @@ import { Head, Link } from '@inertiajs/react';
 import { Button, Heading, Text } from '@particle-academy/react-fancy';
 import { motion } from 'framer-motion';
 import { Settings } from 'lucide-react';
+import FancyBadge from '../Components/FancyBadge';
 import GradientDivider from '../Components/GradientDivider';
 import Logo from '../Components/Logo';
 import NavButton from '../Components/NavButton';
@@ -139,6 +140,9 @@ export default function Welcome() {
                     >
                         About this app
                     </Link>
+                    <div className="mt-4 flex justify-center">
+                        <FancyBadge />
+                    </div>
                 </footer>
             </div>
         </>

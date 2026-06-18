@@ -23,6 +23,7 @@ import {
     Tags,
     Workflow,
 } from 'lucide-react';
+import FancyBadge from '../Components/FancyBadge';
 import GradientDivider from '../Components/GradientDivider';
 import Logo from '../Components/Logo';
 import NavButton from '../Components/NavButton';
@@ -601,6 +602,9 @@ export default function About() {
                     <Text className="text-sm text-gray-500 dark:text-gray-400">
                         Fancy Workflows — automate anything, visually. Built with Laravel, Inertia, React &amp; Claude.
                     </Text>
+                    <div className="mt-4 flex justify-center">
+                        <FancyBadge />
+                    </div>
                 </footer>
             </div>
         </>
