@@ -1,4 +1,5 @@
-import { Head, router } from '@inertiajs/react';
+import { router } from '@inertiajs/react';
+import { Seo } from '@particle-academy/fancy-inertia/seo';
 import { FlowEditor } from '@particle-academy/fancy-flow';
 import { runFlow } from '@particle-academy/fancy-flow/engine';
 import { useFlowRunnerUx } from '@particle-academy/fancy-flow/ux';
@@ -2868,7 +2869,19 @@ function WorkflowEditor() {
 
     return (
         <>
-            <Head title={`${name || 'New Workflow'} — Fancy Workflows`} />
+            {/* Per-page client-side SEO override on top of the fancy-seo server
+                baseline: the title + description track the live workflow name, so a
+                named workflow shared on social shows its own title/description.
+                clientOnly is inherited from <SeoProvider> (see app.jsx) — this only
+                takes over on the client / SPA nav and never duplicates the SSR head.
+                The "— Fancy Workflows" suffix comes from the provider titleTemplate. */}
+            <Seo
+                title={name || 'New Workflow'}
+                description={
+                    description?.trim() ||
+                    'Compose agentic workflows node by node on an interactive canvas and watch each step reason in real time.'
+                }
+            />
 
             <div className="flex min-h-screen flex-col bg-gray-50 dark:bg-gray-950">
                 {/* Accent banner showing which template is active. transition-colors

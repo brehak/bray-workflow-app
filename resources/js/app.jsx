@@ -7,9 +7,27 @@ import { resolvePageComponent } from 'laravel-vite-plugin/inertia-helpers';
 import { createElement } from 'react';
 import { createRoot } from 'react-dom/client';
 import { AnimatePresence, motion } from 'framer-motion';
+import { SeoProvider } from '@particle-academy/fancy-inertia/seo';
 import { getInitialTheme, applyTheme } from './hooks/useTheme';
 import NavigationProgress from './Components/NavigationProgress';
 import AppUpdateAlert from './Components/AppUpdateAlert';
+
+// Site-wide defaults for per-page <Seo> overrides (@particle-academy/fancy-inertia).
+// `clientOnly: true` is the crucial bit: our server baseline already renders the
+// full head on the first byte via the Blade <x-fancy-seo::head> (particle-academy/
+// fancy-seo), so <Seo> must NOT also emit it during SSR — it only takes over on the
+// client and on SPA navigation (head-key dedupe), and the two never duplicate tags.
+// Keep these aligned with config/fancy-seo.php.
+const seoDefaults = {
+    siteName: 'Fancy Workflows',
+    titleTemplate: '%s — Fancy Workflows',
+    defaultImage: '/og-image.png',
+    locale: 'en_US',
+    // Auto-derives canonical + absolutises the OG image on the client. Matches the
+    // server's config('app.url') in production (same origin).
+    siteUrl: typeof window !== 'undefined' ? window.location.origin : undefined,
+    clientOnly: true,
+};
 
 // Apply the stored (or system) theme before the app renders so there's no flash
 // of the wrong theme on load or when navigating between pages.
@@ -56,7 +74,7 @@ function AnimatedPage({ Component, props, pageKey }) {
 // listeners persist) alongside the per-page transition.
 function Root({ App, props }) {
     return (
-        <>
+        <SeoProvider value={seoDefaults}>
             <NavigationProgress />
             <AppUpdateAlert />
             <App {...props}>
@@ -64,7 +82,7 @@ function Root({ App, props }) {
                     <AnimatedPage Component={Component} props={pageProps} pageKey={key} />
                 )}
             </App>
-        </>
+        </SeoProvider>
     );
 }
 
