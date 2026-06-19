@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Sparkles, SlashSquare, ArrowUp, Check, Play, Trash2 } from 'lucide-react';
+import { Sparkles, SlashSquare, ArrowUp, Check, Play, Trash2, Brain } from 'lucide-react';
 import { CHAT_STORAGE_PREFIX, getSettings } from '../lib/settings';
 
 /**
@@ -23,6 +23,8 @@ import { CHAT_STORAGE_PREFIX, getSettings } from '../lib/settings';
  *   workflowName     — the workflow's name, for context
  *   onApplyWorkflow  — (graph) => void, applies an AI-proposed graph to the canvas
  *   onRunWorkflow    — () => bool, triggers the canvas's real Run button
+ *   onRunFromChat    — async () => summary, runs the workflow straight from chat
+ *                      (injecting a synthetic trigger when there's no trigger node)
  *   storageKey       — stable per-workflow key for persisting chat history
  *
  * Styling intentionally mirrors the rest of the app: glassmorphism cards, full
@@ -32,8 +34,8 @@ import { CHAT_STORAGE_PREFIX, getSettings } from '../lib/settings';
 // Maps a slash command to a fuller, explicit instruction for Claude. The user
 // still sees what they typed in their bubble; this is only what we send to the
 // model so terse commands like "/explain" become clear, actionable prompts.
-// `/clear` (clears the conversation) and `/run` (triggers the real canvas run)
-// are handled locally and aren't here.
+// `/clear` (clears the conversation) and `/run` (runs the workflow directly from
+// chat, acting as its own trigger) are handled locally and aren't here.
 const COMMAND_PROMPTS = {
     '/build': 'Build a complete workflow from this description, replacing the current canvas:',
     '/add': 'Add a new step to the current workflow:',
@@ -92,6 +94,62 @@ const removeStored = (key) => {
 
 // Is this input the explicit "/run" command (optionally with trailing space)?
 const isRunCommand = (text) => /^\/run(\s.*)?$/i.test(text.trim());
+
+// ── Thinking-indicator status stages ────────────────────────────────────────
+// While we wait, the TypingIndicator cycles through a short, fading sequence of
+// status lines so the wait feels like real work happening. We pick the sequence
+// up-front from what the user asked for: a richer build-a-workflow narrative,
+// a couple of generic "thinking" lines for plain questions, or a run narrative
+// for the local `/run` execution.
+const THINKING_STAGES = {
+    building: [
+        'Analyzing your request…',
+        'Reading the workflow…',
+        'Generating nodes…',
+        'Validating connections…',
+        'Applying to canvas…',
+    ],
+    thinking: ['Thinking…', 'Analyzing…'],
+    running: ['Starting workflow…', 'Executing steps…', 'Finishing up…'],
+};
+
+// Slash commands that change the graph (so the build narrative fits) vs. ones
+// that only answer/explain (so the simpler "thinking" narrative fits).
+const BUILDING_COMMANDS = new Set(['/build', '/add', '/modify', '/remove', '/connect', '/branch', '/expand', '/example', '/suggest']);
+const QUESTION_COMMANDS = new Set(['/explain', '/summarize', '/review', '/optimize', '/save', '/reset']);
+
+// Decide which thinking narrative to show for a message. Explicit build/question
+// commands map cleanly; plain free-text (the common "build me a…" case) defaults
+// to the richer build sequence.
+function thinkingModeFor(text) {
+    const trimmed = text.trim();
+    const cmd = trimmed.match(/^(\/\S+)/)?.[1];
+    if (cmd) return QUESTION_COMMANDS.has(cmd) ? 'thinking' : 'building';
+    // Plain free-text that reads like a question (incl. the "Explain this step" /
+    // "Improve this step" prompts) gets the simpler narrative; everything else
+    // (the common "build me a…" case) gets the richer build sequence.
+    if (/^(explain|describe|summari[sz]e|what|why|how|which|when|who|is|are|does|can|could|should)\b/i.test(trimmed)) {
+        return 'thinking';
+    }
+    return 'building';
+}
+
+// Turn the result of a chat-initiated run into a friendly summary bubble. The
+// summary reports how many steps ran, success vs failure, and notes when /run
+// had to act as its own trigger (no trigger node on the canvas).
+function formatRunSummary(summary) {
+    if (!summary || summary.empty || summary.totalNodes === 0) {
+        return "There's nothing to run yet — add some steps to the canvas first.";
+    }
+    const { ok, error, totalNodes, nodesRun, injectedTrigger } = summary;
+    const head = ok ? '✓ Workflow ran successfully' : '✗ Workflow run failed';
+    const ranLine = `${nodesRun} of ${totalNodes} step${totalNodes === 1 ? '' : 's'} ran`;
+    const triggerNote = injectedTrigger
+        ? '\nNo trigger node on the canvas, so /run started it with a synthetic trigger event.'
+        : '';
+    const errLine = !ok && error ? `\n${error}` : '';
+    return `${head} — ${ranLine}.${triggerNote}${errLine}`;
+}
 
 // Turn a raw input into the text we send to Claude: if it starts with a known
 // slash command, swap in that command's fuller instruction and append any extra
@@ -302,10 +360,33 @@ function MessageBubble({ message }) {
 }
 
 /**
- * TypingIndicator — the assistant "…" bubble shown while we wait on Claude.
- * Mirrors MessageBubble's assistant styling with three bouncing dots.
+ * TypingIndicator — the "Claude is working" bubble shown while we wait. Instead
+ * of static dots, it steps through a short, fading sequence of status lines
+ * (chosen by `mode` — see THINKING_STAGES) so the wait reads like real progress:
+ * each line holds ~1.5s, then cross-fades up to the next, settling on the last.
+ * A pulsing brain icon and a sparkle avatar add a bit of life, and three
+ * shimmering dots trail the text. Purely cosmetic — the actual request/run
+ * drives `loading`, which mounts/unmounts this whole component.
  */
-function TypingIndicator() {
+function TypingIndicator({ mode = 'thinking' }) {
+    const stages = THINKING_STAGES[mode] ?? THINKING_STAGES.thinking;
+    const [step, setStep] = useState(0);
+
+    // Restart the sequence whenever the mode changes (a new request begins).
+    useEffect(() => {
+        setStep(0);
+    }, [mode]);
+
+    // Advance one stage at a time until we reach the last, then hold there for
+    // however long the request still takes.
+    useEffect(() => {
+        if (step >= stages.length - 1) return;
+        const t = setTimeout(() => setStep((s) => Math.min(s + 1, stages.length - 1)), 1500);
+        return () => clearTimeout(t);
+    }, [step, stages.length]);
+
+    const label = stages[Math.min(step, stages.length - 1)];
+
     return (
         <motion.div
             initial={{ opacity: 0, y: 8 }}
@@ -313,24 +394,56 @@ function TypingIndicator() {
             exit={{ opacity: 0 }}
             transition={{ type: 'spring', stiffness: 360, damping: 30 }}
             className="flex justify-start"
-            aria-label="Claude is typing"
+            aria-label="Claude is working"
+            aria-live="polite"
         >
             <div className="flex max-w-[85%] flex-row gap-2">
-                <span
+                {/* Sparkle avatar — gently breathes while Claude works. */}
+                <motion.span
                     aria-hidden="true"
                     className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-indigo-500 to-fuchsia-500 text-white shadow-sm"
+                    animate={{ scale: [1, 1.08, 1] }}
+                    transition={{ duration: 1.8, repeat: Infinity, ease: 'easeInOut' }}
                 >
                     <Sparkles size={13} />
-                </span>
-                <div className="flex items-center gap-1 rounded-2xl rounded-tl-sm border border-gray-200/70 bg-white/70 px-3 py-2.5 shadow-sm backdrop-blur dark:border-gray-700/60 dark:bg-gray-800/60">
-                    {[0, 1, 2].map((i) => (
+                </motion.span>
+                <div className="flex items-center gap-2 rounded-2xl rounded-tl-sm border border-gray-200/70 bg-white/70 px-3 py-2 shadow-sm backdrop-blur dark:border-gray-700/60 dark:bg-gray-800/60">
+                    {/* Pulsing brain, next to the status text. */}
+                    <motion.span
+                        aria-hidden="true"
+                        className="shrink-0 text-indigo-500 dark:text-indigo-400"
+                        animate={{ scale: [1, 1.18, 1], opacity: [0.65, 1, 0.65] }}
+                        transition={{ duration: 1.6, repeat: Infinity, ease: 'easeInOut' }}
+                    >
+                        <Brain size={14} />
+                    </motion.span>
+
+                    {/* Cross-fading status line. `mode="wait"` lets the old line
+                        animate out before the new one slides in. */}
+                    <AnimatePresence mode="wait" initial={false}>
                         <motion.span
-                            key={i}
-                            className="h-1.5 w-1.5 rounded-full bg-gray-400 dark:bg-gray-500"
-                            animate={{ opacity: [0.3, 1, 0.3], y: [0, -2, 0] }}
-                            transition={{ duration: 1, repeat: Infinity, delay: i * 0.18, ease: 'easeInOut' }}
-                        />
-                    ))}
+                            key={label}
+                            initial={{ opacity: 0, y: 5 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: -5 }}
+                            transition={{ duration: 0.28, ease: 'easeOut' }}
+                            className="bg-gradient-to-r from-indigo-600 to-fuchsia-600 bg-clip-text text-xs font-medium text-transparent dark:from-indigo-300 dark:to-fuchsia-300"
+                        >
+                            {label}
+                        </motion.span>
+                    </AnimatePresence>
+
+                    {/* Trailing shimmer dots. */}
+                    <span className="flex shrink-0 items-center gap-0.5">
+                        {[0, 1, 2].map((i) => (
+                            <motion.span
+                                key={i}
+                                className="h-1 w-1 rounded-full bg-indigo-400 dark:bg-indigo-500"
+                                animate={{ opacity: [0.3, 1, 0.3], y: [0, -1.5, 0] }}
+                                transition={{ duration: 1, repeat: Infinity, delay: i * 0.18, ease: 'easeInOut' }}
+                            />
+                        ))}
+                    </span>
                 </div>
             </div>
         </motion.div>
@@ -396,7 +509,7 @@ function CommandPalette({ open, onSelect, query }) {
     );
 }
 
-export default function ChatPanel({ workflow, workflowName, onApplyWorkflow, onRunWorkflow, storageKey }) {
+export default function ChatPanel({ workflow, workflowName, onApplyWorkflow, onRunWorkflow, onRunFromChat, submittedPrompt, storageKey }) {
     // Seed messages from this workflow's persisted history (if any) on first mount.
     const [messages, setMessages] = useState(() => {
         const stored = loadStored(storageKey);
@@ -409,6 +522,9 @@ export default function ChatPanel({ workflow, workflowName, onApplyWorkflow, onR
     const [draft, setDraft] = useState('');
     const [paletteOpen, setPaletteOpen] = useState(false);
     const [loading, setLoading] = useState(false);
+    // Which status narrative the typing indicator shows while `loading`:
+    // 'building' | 'thinking' (a Claude turn) or 'running' (a local /run).
+    const [thinkingMode, setThinkingMode] = useState('thinking');
     const [confirmingClear, setConfirmingClear] = useState(false);
     const scrollRef = useRef(null);
     const inputRef = useRef(null);
@@ -419,11 +535,13 @@ export default function ChatPanel({ workflow, workflowName, onApplyWorkflow, onR
     const nameRef = useRef(workflowName);
     const applyRef = useRef(onApplyWorkflow);
     const runRef = useRef(onRunWorkflow);
+    const runFromChatRef = useRef(onRunFromChat);
     useEffect(() => {
         workflowRef.current = workflow;
         nameRef.current = workflowName;
         applyRef.current = onApplyWorkflow;
         runRef.current = onRunWorkflow;
+        runFromChatRef.current = onRunFromChat;
     });
 
     // ── Persist conversation per workflow ───────────────────────────────────
@@ -499,8 +617,12 @@ export default function ChatPanel({ workflow, workflowName, onApplyWorkflow, onR
         setConfirmingClear(false);
     };
 
-    const send = async () => {
-        const text = draft.trim();
+    // `send` is used both as the composer's submit handler (called with the click
+    // event) and programmatically (e.g. the config panel's "Ask Claude" buttons,
+    // which pass an explicit prompt string). Anything that isn't a string falls
+    // back to the current draft.
+    const send = async (override) => {
+        const text = (typeof override === 'string' ? override : draft).trim();
         if (!text || loading) return;
 
         // `/clear` is a local action — wipe the conversation (and its stored copy).
@@ -512,23 +634,60 @@ export default function ChatPanel({ workflow, workflowName, onApplyWorkflow, onR
             return;
         }
 
-        // `/run` triggers the actual canvas run (not a simulated one). Results show
-        // in the real run feed below the canvas; the chat just confirms.
+        // `/run` runs the workflow directly from the chat. It acts as its own
+        // trigger: with a trigger node on the canvas the run starts there as
+        // normal; with none (a blank/incomplete workflow) it injects a synthetic
+        // trigger event and starts from the first connected node. The run uses the
+        // same engine + executors as the canvas, so the run feed, toasts and
+        // animations all fire as usual; here we show progress and, when it's done,
+        // a summary of what happened.
         if (isRunCommand(text)) {
-            const started = triggerRun();
             setMessages((prev) => [
                 ...prev,
                 { id: nextId(), role: 'user', text },
-                {
-                    id: nextId(),
-                    role: 'assistant',
-                    text: started
-                        ? '▶ Running your workflow — watch the run feed below the canvas for results.'
-                        : 'The workflow looks like it’s already running — check the run feed below the canvas.',
-                },
+                { id: nextId(), role: 'assistant', text: '▶ Running workflow…', ran: true },
             ]);
             setDraft('');
             setPaletteOpen(false);
+
+            const runner = runFromChatRef.current;
+            // Fallback: if the direct-run handler isn't wired, fall back to clicking
+            // the canvas Run button (the previous behaviour) so /run never no-ops.
+            if (!runner) {
+                const started = triggerRun();
+                setMessages((prev) => [
+                    ...prev,
+                    {
+                        id: nextId(),
+                        role: 'assistant',
+                        text: started
+                            ? 'Watch the run feed below the canvas for results.'
+                            : 'The workflow looks like it’s already running — check the run feed below the canvas.',
+                    },
+                ]);
+                return;
+            }
+
+            setThinkingMode('running');
+            setLoading(true);
+            try {
+                const summary = await runner();
+                setMessages((prev) => [
+                    ...prev,
+                    { id: nextId(), role: 'assistant', text: formatRunSummary(summary) },
+                ]);
+            } catch {
+                setMessages((prev) => [
+                    ...prev,
+                    {
+                        id: nextId(),
+                        role: 'assistant',
+                        text: 'Sorry — the workflow run failed to start. Please try again.',
+                    },
+                ]);
+            } finally {
+                setLoading(false);
+            }
             return;
         }
 
@@ -541,6 +700,7 @@ export default function ChatPanel({ workflow, workflowName, onApplyWorkflow, onR
         setMessages((prev) => [...prev, { id: nextId(), role: 'user', text }]);
         setDraft('');
         setPaletteOpen(false);
+        setThinkingMode(thinkingModeFor(text));
         setLoading(true);
 
         // POST one turn to Claude with the given message + prior conversation,
@@ -672,6 +832,20 @@ export default function ChatPanel({ workflow, workflowName, onApplyWorkflow, onR
         }
     };
 
+    // Send a prompt queued from outside the panel (the config panel's "Ask Claude"
+    // buttons). Each click bumps `submittedPrompt.nonce`, so we fire once per click
+    // — even when the same prompt is asked twice — and never re-fire on remount.
+    const lastAskNonce = useRef(null);
+    useEffect(() => {
+        if (!submittedPrompt || submittedPrompt.nonce === lastAskNonce.current) return;
+        lastAskNonce.current = submittedPrompt.nonce;
+        const text = submittedPrompt.text?.trim();
+        if (text) send(text);
+        // `send` is intentionally omitted — it's recreated each render but always
+        // closes over current state, and we only want to react to a new nonce.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [submittedPrompt]);
+
     const onKeyDown = (e) => {
         if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault();
@@ -761,7 +935,7 @@ export default function ChatPanel({ workflow, workflowName, onApplyWorkflow, onR
                 {messages.map((m) => (
                     <MessageBubble key={m.id} message={m} />
                 ))}
-                <AnimatePresence>{loading && <TypingIndicator key="typing" />}</AnimatePresence>
+                <AnimatePresence>{loading && <TypingIndicator key="typing" mode={thinkingMode} />}</AnimatePresence>
             </div>
 
             {/* Composer */}

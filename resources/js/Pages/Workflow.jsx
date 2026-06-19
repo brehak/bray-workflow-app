@@ -1,5 +1,6 @@
 import { Head, router } from '@inertiajs/react';
 import { FlowEditor } from '@particle-academy/fancy-flow';
+import { runFlow } from '@particle-academy/fancy-flow/engine';
 import { useFlowRunnerUx } from '@particle-academy/fancy-flow/ux';
 import { Button, Heading, Pillbox, Text, Toast, useToast } from '@particle-academy/react-fancy';
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
@@ -2528,6 +2529,55 @@ function WorkflowEditor() {
         return false;
     };
 
+    // Run the workflow straight from the chat's `/run` command, returning a
+    // summary the chat can show. Unlike the canvas Run button — which needs a
+    // trigger node to start — this is `/run`-as-trigger: when the graph has no
+    // trigger node (a blank or incomplete workflow), it injects a synthetic
+    // trigger event ({ startedAt, source: 'chat' }) into every entry-point node
+    // (one with no incoming edge), so execution starts from the first connected
+    // node. When a trigger node IS present it's an entry point too, so the run
+    // starts there as normal and no synthetic event is needed.
+    //
+    // We execute against the SAME `executors` registry as the canvas (the one
+    // wrapped with run hooks), so the run feed, toasts, edge-flow animation,
+    // run history and confetti all behave exactly like clicking Run. Returns
+    // { ok, error, totalNodes, nodesRun, injectedTrigger, empty } for the chat
+    // to summarize. The existing Run button and AI auto-run are untouched.
+    const runFromChat = async () => {
+        const g = latestGraphRef.current ?? { nodes: [], edges: [] };
+        const allNodes = Array.isArray(g.nodes) ? g.nodes : [];
+        const edges = Array.isArray(g.edges) ? g.edges : [];
+        const kindOf = (n) => n?.type ?? n?.data?.kind;
+        // Note nodes are annotations — they never execute, so they don't count
+        // toward the "X of Y steps ran" tally.
+        const runnableCount = allNodes.filter((n) => kindOf(n) !== 'note').length;
+
+        if (runnableCount === 0) {
+            return { ok: false, empty: true, totalNodes: 0, nodesRun: 0, injectedTrigger: false };
+        }
+
+        const hasTrigger = allNodes.some((n) => kindOf(n) === 'trigger');
+        let initialInputs;
+        if (!hasTrigger) {
+            const targets = new Set(edges.map((e) => e.target));
+            const event = { startedAt: Date.now(), source: 'chat' };
+            initialInputs = {};
+            for (const n of allNodes) {
+                if (!targets.has(n.id)) initialInputs[n.id] = { in: event };
+            }
+            appendFeed({ level: 'info', text: '▶ /run injected a chat trigger event (no trigger node)' });
+        }
+
+        const result = await runFlow(g, executors, () => {}, initialInputs ? { initialInputs } : {});
+        return {
+            ok: result.ok,
+            error: result.error,
+            totalNodes: runnableCount,
+            nodesRun: Object.keys(result.outputs ?? {}).length,
+            injectedTrigger: !hasTrigger,
+        };
+    };
+
     // Stable per-workflow key for persisting the chat history. Prefer the saved
     // id (URL or db) so it survives navigating away and back; fall back to the
     // name for brand-new, unsaved workflows.
@@ -3286,6 +3336,7 @@ function WorkflowEditor() {
                         workflowName={name}
                         onApplyWorkflow={applyAiWorkflow}
                         onRunWorkflow={triggerCanvasRun}
+                        onRunFromChat={runFromChat}
                         chatStorageKey={chatStorageKey}
                         // "Chat panel default state": open on load unless set to "closed".
                         defaultOpen={userSettings.chatPanelDefault !== 'closed'}
