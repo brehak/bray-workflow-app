@@ -108,6 +108,95 @@ function expandCommand(text) {
 
 const csrfToken = () => document.querySelector('meta[name="csrf-token"]')?.content ?? '';
 
+// ── Generated-workflow validation ───────────────────────────────────────────
+// Before applying a Claude-proposed graph to the canvas, check it forms a
+// well-structured, executable workflow: it starts at a trigger, every step
+// leads somewhere and is reachable, decisions branch cleanly in two, and
+// branches never merge back together. fancy-flow runs each branch independently
+// to its own output node — a shared "merge" node makes a run stop early — so a
+// cleanly-branched graph is a tree where every node has exactly one parent.
+//
+// Returns { valid, errors }. On failure the caller doesn't touch the canvas; it
+// shows the problems and asks Claude to regenerate a corrected graph.
+function validateGraph(graph) {
+    const errors = [];
+    const nodes = Array.isArray(graph?.nodes) ? graph.nodes : [];
+    const edges = Array.isArray(graph?.edges) ? graph.edges : [];
+
+    if (nodes.length === 0) return { valid: false, errors: ['The workflow has no nodes.'] };
+
+    const typeOf = (n) => n?.type ?? n?.data?.kind;
+    const nameOf = (n) => `"${n?.data?.label || n?.id}"`;
+
+    const triggers = nodes.filter((n) => typeOf(n) === 'trigger');
+    const outputs = nodes.filter((n) => typeOf(n) === 'output');
+
+    // At least one trigger and one output.
+    if (triggers.length === 0) errors.push('There is no trigger node — every workflow needs a starting trigger.');
+    if (outputs.length === 0) errors.push('There is no output node — every workflow needs at least one end/output step.');
+
+    // Index edges by source and target.
+    const outgoing = new Map();
+    const incoming = new Map();
+    for (const n of nodes) {
+        outgoing.set(n.id, []);
+        incoming.set(n.id, []);
+    }
+    for (const e of edges) {
+        if (outgoing.has(e.source)) outgoing.get(e.source).push(e);
+        if (incoming.has(e.target)) incoming.get(e.target).push(e);
+    }
+
+    for (const n of nodes) {
+        const kind = typeOf(n);
+        const outs = outgoing.get(n.id) ?? [];
+
+        // Every non-output node must lead somewhere.
+        if (kind !== 'output' && outs.length === 0) {
+            errors.push(`${nameOf(n)} (${kind}) has no outgoing connection — every non-output step must lead to another node.`);
+        }
+
+        // Every decision must branch in exactly two: one "true", one "false".
+        if (kind === 'decision') {
+            const trues = outs.filter((e) => e.sourceHandle === 'true').length;
+            const falses = outs.filter((e) => e.sourceHandle === 'false').length;
+            if (outs.length !== 2 || trues !== 1 || falses !== 1) {
+                errors.push(
+                    `Decision ${nameOf(n)} must have exactly two outgoing edges — one with sourceHandle "true" and one with "false" (found ${outs.length} edge(s): ${trues} true, ${falses} false).`,
+                );
+            }
+        }
+
+        // No merge points: in a cleanly-branched workflow every node has exactly
+        // one parent. Two-or-more incoming edges means separate branch paths
+        // merged back into a shared node, which fancy-flow can't run.
+        const ins = incoming.get(n.id) ?? [];
+        if (ins.length > 1) {
+            errors.push(
+                `${nameOf(n)} is a merge point — ${ins.length} edges point to it. Branches after a decision must stay independent and each end at its own output node, never rejoining a shared node.`,
+            );
+        }
+    }
+
+    // Every node must be reachable from a trigger.
+    if (triggers.length > 0) {
+        const seen = new Set();
+        const stack = triggers.map((t) => t.id);
+        while (stack.length) {
+            const id = stack.pop();
+            if (seen.has(id)) continue;
+            seen.add(id);
+            for (const e of outgoing.get(id) ?? []) stack.push(e.target);
+        }
+        const unreachable = nodes.filter((n) => !seen.has(n.id));
+        if (unreachable.length) {
+            errors.push(`These steps aren't reachable from the trigger: ${unreachable.map(nameOf).join(', ')}.`);
+        }
+    }
+
+    return { valid: errors.length === 0, errors };
+}
+
 // Slash commands, grouped by category, surfaced through the `/` palette. These
 // are presentational for now — selecting one just drops it into the input.
 export const COMMAND_CATEGORIES = [
@@ -454,7 +543,9 @@ export default function ChatPanel({ workflow, workflowName, onApplyWorkflow, onR
         setPaletteOpen(false);
         setLoading(true);
 
-        try {
+        // POST one turn to Claude with the given message + prior conversation,
+        // always sending the live canvas graph. Returns the parsed response.
+        const postChat = async (message, conversationHistory) => {
             const res = await fetch('/api/workflow/chat', {
                 method: 'POST',
                 headers: {
@@ -463,25 +554,83 @@ export default function ChatPanel({ workflow, workflowName, onApplyWorkflow, onR
                     'X-CSRF-TOKEN': csrfToken(),
                 },
                 body: JSON.stringify({
-                    message: expandCommand(text),
+                    message,
                     workflow_name: nameRef.current ?? 'Workflow',
                     workflow: {
                         nodes: workflowRef.current?.nodes ?? [],
                         edges: workflowRef.current?.edges ?? [],
                     },
-                    conversation_history: history,
+                    conversation_history: conversationHistory,
                     // Read live so the "Chat response length" preference applies
                     // immediately, without remounting the panel.
                     response_length: getSettings().chatResponseLength,
                 }),
             });
             if (!res.ok) throw new Error(`workflow/chat HTTP ${res.status}`);
-            const data = await res.json();
+            return res.json();
+        };
 
-            // Apply any proposed graph to the canvas before showing the reply, so
-            // the change is on screen by the time the user reads "I've added…".
-            let applied = false;
+        try {
+            const firstMessage = expandCommand(text);
+            let data = await postChat(firstMessage, history);
+            // Running transcript so each auto-fix turn keeps full context.
+            const convo = [...history, { role: 'user', content: firstMessage }];
+
+            // Validate any proposed graph before touching the canvas. If it's
+            // broken, don't apply it — explain what's wrong, ask Claude to
+            // regenerate a corrected graph, then re-validate. Bounded retries so
+            // a persistently-bad model can't loop forever.
+            let invalidGiveUp = false;
             if (data.workflow && Array.isArray(data.workflow.nodes)) {
+                const MAX_FIX_ATTEMPTS = 2;
+                let validation = validateGraph(data.workflow);
+                for (let attempt = 0; !validation.valid && attempt < MAX_FIX_ATTEMPTS; attempt++) {
+                    const issues = validation.errors.map((e) => `• ${e}`).join('\n');
+                    setMessages((prev) => [
+                        ...prev,
+                        {
+                            id: nextId(),
+                            role: 'assistant',
+                            text: `⚠️ The workflow Claude generated wasn't valid, so I didn't apply it:\n${issues}\n\nAsking Claude to fix it…`,
+                        },
+                    ]);
+                    convo.push({ role: 'assistant', content: data.reply || '(returned an invalid workflow graph)' });
+                    const fixPrompt =
+                        `The workflow graph you just returned is invalid and was NOT applied to the canvas. ` +
+                        `Fix these problems and return the COMPLETE corrected graph:\n${issues}\n\n` +
+                        `Make sure: every non-output node has at least one outgoing edge; every decision node has exactly ` +
+                        `two outgoing edges (one with sourceHandle "true" and one with "false"); no node is a merge point — ` +
+                        `each branch after a decision stays completely independent and ends at its own output node, so two ` +
+                        `paths never point to the same node; there is at least one trigger and at least one output; and every ` +
+                        `node is reachable from the trigger.`;
+                    convo.push({ role: 'user', content: fixPrompt });
+                    data = await postChat(fixPrompt, convo);
+                    if (!(data.workflow && Array.isArray(data.workflow.nodes))) {
+                        validation = { valid: false, errors: ['Claude did not return a corrected workflow graph.'] };
+                        break;
+                    }
+                    validation = validateGraph(data.workflow);
+                }
+
+                if (!validation.valid) {
+                    // Out of retries — leave the canvas untouched and explain why.
+                    invalidGiveUp = true;
+                    const issues = validation.errors.map((e) => `• ${e}`).join('\n');
+                    setMessages((prev) => [
+                        ...prev,
+                        {
+                            id: nextId(),
+                            role: 'assistant',
+                            text: `I couldn't produce a valid workflow, so I've left the canvas unchanged:\n${issues}\n\nTry rephrasing your request, or adjust the workflow manually.`,
+                        },
+                    ]);
+                }
+            }
+
+            // Apply the (now-validated) graph to the canvas before showing the
+            // reply, so the change is on screen by the time the user reads it.
+            let applied = false;
+            if (!invalidGiveUp && data.workflow && Array.isArray(data.workflow.nodes)) {
                 applied = applyRef.current?.(data.workflow) ?? false;
             }
 
@@ -489,22 +638,26 @@ export default function ChatPanel({ workflow, workflowName, onApplyWorkflow, onR
             // real canvas Run. When a graph change was just applied the editor
             // remounts, so defer the click briefly to let the new graph render.
             let ran = false;
-            if (data.run === true) {
+            if (!invalidGiveUp && data.run === true) {
                 if (applied) setTimeout(triggerRun, 400);
                 else ran = triggerRun();
             }
 
-            const replyText = data.reply || 'Done.';
-            setMessages((prev) => [
-                ...prev,
-                {
-                    id: nextId(),
-                    role: 'assistant',
-                    text: replyText,
-                    applied: applied === true,
-                    ran: ran === true || (data.run === true && applied),
-                },
-            ]);
+            // When we gave up on an invalid graph we've already shown the reason;
+            // don't tack on Claude's (now-stale) reply about a change that never landed.
+            if (!invalidGiveUp) {
+                const replyText = data.reply || 'Done.';
+                setMessages((prev) => [
+                    ...prev,
+                    {
+                        id: nextId(),
+                        role: 'assistant',
+                        text: replyText,
+                        applied: applied === true,
+                        ran: ran === true || (data.run === true && applied),
+                    },
+                ]);
+            }
         } catch {
             setMessages((prev) => [
                 ...prev,

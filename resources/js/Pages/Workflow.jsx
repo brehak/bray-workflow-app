@@ -52,24 +52,25 @@ const templates = {
             { id: 'create-accounts', type: 'action', position: { x: 520, y: 160 }, data: { kind: 'action', label: 'Create Accounts (GitHub, Slack, Email)' } },
             { id: 'department-check', type: 'decision', position: { x: 780, y: 160 }, data: { kind: 'decision', label: 'Which Department?' } },
             { id: 'setup-dev', type: 'action', position: { x: 1040, y: 60 }, data: { kind: 'action', label: 'Setup Dev Environment' } },
+            { id: 'assign-training', type: 'action', position: { x: 1300, y: 60 }, data: { kind: 'action', label: 'Assign Training' } },
+            { id: 'complete', type: 'output', position: { x: 1560, y: 60 }, data: { kind: 'output', label: 'Onboarding Complete!' } },
             { id: 'setup-design', type: 'action', position: { x: 1040, y: 260 }, data: { kind: 'action', label: 'Setup Design Tools' } },
-            { id: 'assign-training', type: 'action', position: { x: 1300, y: 160 }, data: { kind: 'action', label: 'Assign Training' } },
-            { id: 'complete', type: 'output', position: { x: 1560, y: 160 }, data: { kind: 'output', label: 'Onboarding Complete!' } },
+            { id: 'assign-training-design', type: 'action', position: { x: 1300, y: 260 }, data: { kind: 'action', label: 'Assign Training' } },
+            { id: 'complete-design', type: 'output', position: { x: 1560, y: 260 }, data: { kind: 'output', label: 'Onboarding Complete!' } },
         ],
         edges: [
             { id: 'e1', source: 'trigger', target: 'welcome-email' },
             { id: 'e2', source: 'welcome-email', target: 'create-accounts' },
             { id: 'e3', source: 'create-accounts', target: 'department-check' },
-            // The runner uses AND-join: a node fires only once EVERY incoming edge
-            // has produced a value. `assign-training` merges both department
-            // branches, so BOTH setup steps must run for it (and `complete`) to
-            // execute. Both branches therefore fan out from the decision's active
-            // port and reconverge, instead of one branch being skipped.
+            // Each department branch is fully independent and ends at its own
+            // output node — fancy-flow does not merge branches, so the engineering
+            // and design tracks never reconverge on a shared node.
             { id: 'e4', source: 'department-check', sourceHandle: 'true', target: 'setup-dev' },
-            { id: 'e5', source: 'department-check', sourceHandle: 'true', target: 'setup-design' },
-            { id: 'e6', source: 'setup-dev', target: 'assign-training' },
-            { id: 'e7', source: 'setup-design', target: 'assign-training' },
-            { id: 'e8', source: 'assign-training', target: 'complete' },
+            { id: 'e5', source: 'setup-dev', target: 'assign-training' },
+            { id: 'e6', source: 'assign-training', target: 'complete' },
+            { id: 'e7', source: 'department-check', sourceHandle: 'false', target: 'setup-design' },
+            { id: 'e8', source: 'setup-design', target: 'assign-training-design' },
+            { id: 'e9', source: 'assign-training-design', target: 'complete-design' },
         ],
     },
     order: {
@@ -101,21 +102,24 @@ const templates = {
             { id: 'triage', type: 'action', position: { x: 260, y: 160 }, data: { kind: 'action', label: 'Triage Bug' } },
             { id: 'severity', type: 'decision', position: { x: 520, y: 160 }, data: { kind: 'decision', label: 'Critical?' } },
             { id: 'hotfix', type: 'action', position: { x: 780, y: 60 }, data: { kind: 'action', label: 'Assign Hotfix' } },
+            { id: 'fix', type: 'action', position: { x: 1040, y: 60 }, data: { kind: 'action', label: 'Fix & Test' } },
+            { id: 'close', type: 'output', position: { x: 1300, y: 60 }, data: { kind: 'output', label: 'Bug Closed' } },
             { id: 'backlog', type: 'action', position: { x: 780, y: 260 }, data: { kind: 'action', label: 'Add to Backlog' } },
-            { id: 'fix', type: 'action', position: { x: 1040, y: 160 }, data: { kind: 'action', label: 'Fix & Test' } },
-            { id: 'close', type: 'output', position: { x: 1300, y: 160 }, data: { kind: 'output', label: 'Bug Closed' } },
+            { id: 'fix-backlog', type: 'action', position: { x: 1040, y: 260 }, data: { kind: 'action', label: 'Fix & Test' } },
+            { id: 'close-backlog', type: 'output', position: { x: 1300, y: 260 }, data: { kind: 'output', label: 'Bug Closed' } },
         ],
         edges: [
             { id: 'e1', source: 'trigger', target: 'triage' },
             { id: 'e2', source: 'triage', target: 'severity' },
-            // AND-join: `fix` merges both branches, so BOTH `hotfix` and `backlog`
-            // must run for `fix` (and `close`) to execute. Both branches fan out
-            // from the decision's active port and reconverge at `fix`.
+            // Each severity branch is fully independent and ends at its own output
+            // node — the critical (hotfix) and non-critical (backlog) paths never
+            // reconverge on a shared node.
             { id: 'e3', source: 'severity', sourceHandle: 'true', target: 'hotfix' },
-            { id: 'e4', source: 'severity', sourceHandle: 'true', target: 'backlog' },
-            { id: 'e5', source: 'hotfix', target: 'fix' },
-            { id: 'e6', source: 'backlog', target: 'fix' },
-            { id: 'e7', source: 'fix', target: 'close' },
+            { id: 'e4', source: 'hotfix', target: 'fix' },
+            { id: 'e5', source: 'fix', target: 'close' },
+            { id: 'e6', source: 'severity', sourceHandle: 'false', target: 'backlog' },
+            { id: 'e7', source: 'backlog', target: 'fix-backlog' },
+            { id: 'e8', source: 'fix-backlog', target: 'close-backlog' },
         ],
     },
     jobapplication: {
@@ -216,24 +220,28 @@ const templates = {
             { id: 'assess-scope', type: 'action', position: { x: 260, y: 160 }, data: { kind: 'action', label: 'Assess Scope' } },
             { id: 'safety-check', type: 'decision', position: { x: 520, y: 160 }, data: { kind: 'decision', label: 'Safety Risk?' } },
             { id: 'notify-regulators', type: 'action', position: { x: 780, y: 60 }, data: { kind: 'action', label: 'Notify Regulators' } },
+            { id: 'customer-alert', type: 'action', position: { x: 1040, y: 60 }, data: { kind: 'action', label: 'Customer Alert' } },
+            { id: 'return-process', type: 'action', position: { x: 1300, y: 60 }, data: { kind: 'action', label: 'Return Process' } },
+            { id: 'resolved', type: 'output', position: { x: 1560, y: 60 }, data: { kind: 'output', label: 'Resolved' } },
             { id: 'monitor-situation', type: 'action', position: { x: 780, y: 260 }, data: { kind: 'action', label: 'Monitor Situation' } },
-            { id: 'customer-alert', type: 'action', position: { x: 1040, y: 160 }, data: { kind: 'action', label: 'Customer Alert' } },
-            { id: 'return-process', type: 'action', position: { x: 1300, y: 160 }, data: { kind: 'action', label: 'Return Process' } },
-            { id: 'resolved', type: 'output', position: { x: 1560, y: 160 }, data: { kind: 'output', label: 'Resolved' } },
+            { id: 'customer-alert-monitor', type: 'action', position: { x: 1040, y: 260 }, data: { kind: 'action', label: 'Customer Alert' } },
+            { id: 'return-process-monitor', type: 'action', position: { x: 1300, y: 260 }, data: { kind: 'action', label: 'Return Process' } },
+            { id: 'resolved-monitor', type: 'output', position: { x: 1560, y: 260 }, data: { kind: 'output', label: 'Resolved' } },
         ],
         edges: [
             { id: 'e1', source: 'trigger', target: 'assess-scope' },
             { id: 'e2', source: 'assess-scope', target: 'safety-check' },
-            // AND-join: `customer-alert` merges both branches, so BOTH
-            // `notify-regulators` and `monitor-situation` must run for the rest of
-            // the chain (`customer-alert` → `return-process` → `resolved`) to
-            // execute. Both branches fan out from the decision's active port.
+            // Each safety branch is fully independent and ends at its own output
+            // node — the regulator-notification and monitor-only paths never
+            // reconverge on a shared node.
             { id: 'e3', source: 'safety-check', sourceHandle: 'true', target: 'notify-regulators' },
-            { id: 'e4', source: 'safety-check', sourceHandle: 'true', target: 'monitor-situation' },
-            { id: 'e5', source: 'notify-regulators', target: 'customer-alert' },
-            { id: 'e6', source: 'monitor-situation', target: 'customer-alert' },
-            { id: 'e7', source: 'customer-alert', target: 'return-process' },
-            { id: 'e8', source: 'return-process', target: 'resolved' },
+            { id: 'e4', source: 'notify-regulators', target: 'customer-alert' },
+            { id: 'e5', source: 'customer-alert', target: 'return-process' },
+            { id: 'e6', source: 'return-process', target: 'resolved' },
+            { id: 'e7', source: 'safety-check', sourceHandle: 'false', target: 'monitor-situation' },
+            { id: 'e8', source: 'monitor-situation', target: 'customer-alert-monitor' },
+            { id: 'e9', source: 'customer-alert-monitor', target: 'return-process-monitor' },
+            { id: 'e10', source: 'return-process-monitor', target: 'resolved-monitor' },
         ],
     },
     eventplanning: {

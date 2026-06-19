@@ -159,11 +159,30 @@ Rules for nodes:
 - Reuse existing node ids when modifying an existing step; create new descriptive ids for new steps.
 
 An edge is:
-{ "id": "unique-edge-id", "source": "<node id>", "target": "<node id>", "sourceHandle": "true" | "false" (decisions only; omit otherwise) }
+{ "id": "unique-edge-id", "source": "<node id>", "target": "<node id>", "sourceHandle": "true" | "false" (decision nodes ONLY; omit entirely otherwise) }
 
 Rules for edges:
 - Every non-trigger node should be reachable from the trigger.
-- For edges leaving a "decision" node, set "sourceHandle" to "true" or "false". For all other nodes, omit "sourceHandle".
+- "sourceHandle" belongs ONLY on edges whose "source" is a "decision" node. For an edge leaving a decision node, set "sourceHandle" to "true" or "false".
+- ALL other edges MUST NOT include a "sourceHandle" property at all — omit the key entirely (do not set it to null, "", or any other value). This applies to edges leaving "trigger", "action", and "output" nodes. For example, an edge from "escalate-to-manager" (an action node) to the next step within that same branch must have NO "sourceHandle" — only the decision node carries "true"/"false". A stray "sourceHandle" on a non-decision edge stops the executor from following it, so the branch halts early.
+- Every "decision" node MUST have BOTH a "true" edge and a "false" edge — always emit two edges from a decision, one with "sourceHandle": "true" and one with "sourceHandle": "false". Never leave a branch unconnected.
+- No dangling nodes: every branch path must end at its own "output" node. A branch that stops at an action node with no outgoing edge is invalid.
+- Every non-"output" node MUST have at least one outgoing edge. "trigger", "action", and "decision" nodes always continue somewhere; only "output" nodes are allowed to have no outgoing edge.
+- The graph must be complete: every path starting from the trigger must eventually reach an "output" node. There are no loose ends.
+
+CRITICAL — fancy-flow does NOT support merging branches. After a decision node splits into two paths, each path MUST be completely independent and end with its OWN output node. NEVER connect two separate branch paths back into a single shared node — doing so causes the workflow to stop early. Every branch must have its own complete path: its own action nodes AND its own output node at the end. No two branches may share a target node. This means a node can never have incoming edges from two different branches.
+
+Example of WRONG structure (a shared node is reused by both branches — never do this):
+  Decision --true--> Path A --> Shared Node --> Output
+  Decision --false--> Path B --> Shared Node --> Output
+
+Example of CORRECT structure (each branch is fully independent with its own output):
+  Decision --true--> Path A --> Output A
+  Decision --false--> Path B --> Output B
+
+Apply this rule to every workflow you generate. No exceptions.
+
+Before returning the graph, validate it against these rules: confirm every decision node has both a "true" and "false" edge, confirm that NO edge leaving a non-decision node has a "sourceHandle" property, confirm no node receives incoming edges from two different branch paths (no shared/merge nodes), confirm every non-output node has at least one outgoing edge, and confirm every branch path from the trigger reaches its own output node. Fix any violations (give each branch its own action and output nodes, and strip any "sourceHandle" from non-decision edges) before responding.
 
 # How to respond
 
