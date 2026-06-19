@@ -9,7 +9,10 @@
         <link rel="icon" type="image/svg+xml" href="/favicon.svg">
         <link rel="apple-touch-icon" href="/favicon.svg">
 
-        <title inertia>{{ config('app.name', 'Laravel') }}</title>
+        {{-- Server-rendered SEO on the first byte: <title>, description, canonical,
+             robots, Open Graph, Twitter cards, and JSON-LD (particle-academy/fancy-seo).
+             Resolved per route from the registration in AppServiceProvider. --}}
+        <x-fancy-seo::head />
 
         {{-- Inter font (Google Fonts) --}}
         <link rel="preconnect" href="https://fonts.googleapis.com">
