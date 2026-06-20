@@ -69,10 +69,12 @@ export default function RightPanel({
 
     const hasNode = Boolean(selectedNode);
 
-    // Collapsed: a slim rail with a button to re-open the assistant.
+    // Collapsed: a slim rail with a button to re-open the assistant. At `lg` it
+    // stretches to the left column's height (editor + run feed) via the row's
+    // default `align-items: stretch`, so the rail tracks the run feed too.
     if (!open) {
         return (
-            <aside className="flex w-12 shrink-0 flex-col items-center gap-2 rounded-xl border border-gray-200 bg-white/80 py-3 shadow-sm backdrop-blur-md dark:border-gray-800 dark:bg-gray-900/70 lg:h-[720px]">
+            <aside className="flex w-12 shrink-0 flex-col items-center gap-2 rounded-xl border border-gray-200 bg-white/80 py-3 shadow-sm backdrop-blur-md dark:border-gray-800 dark:bg-gray-900/70">
                 <button
                     type="button"
                     onClick={() => setOpen(true)}
@@ -89,8 +91,17 @@ export default function RightPanel({
         );
     }
 
+    // The outer wrapper is the flex item in the editor row. At `lg` it's
+    // `relative` with the panel absolutely filling it, so the panel's height is
+    // driven by the sibling left column (editor + run feed) rather than by its
+    // own chat content — a long conversation can't stretch the row. As the run
+    // feed expands/collapses the column grows/shrinks and the panel tracks it,
+    // with the message list scrolling inside (see ChatPanel's `overflow-y-auto`).
+    // On small screens the wrapper collapses to normal flow so the panel keeps
+    // its natural, content-driven height.
     return (
-        <aside className="flex w-80 shrink-0 flex-col overflow-hidden rounded-xl border border-gray-200 bg-white/80 shadow-sm backdrop-blur-md dark:border-gray-800 dark:bg-gray-900/70 lg:h-[720px]">
+        <div className="w-80 shrink-0 lg:relative">
+            <aside className="flex flex-col overflow-hidden rounded-xl border border-gray-200 bg-white/80 shadow-sm backdrop-blur-md dark:border-gray-800 dark:bg-gray-900/70 lg:absolute lg:inset-0">
             {/* Segmented toggle: Chat / Config */}
             <div className="flex shrink-0 gap-1 border-b border-gray-100 p-2 dark:border-gray-800">
                 <ToggleButton
@@ -151,7 +162,8 @@ export default function RightPanel({
                     )}
                 </AnimatePresence>
             </div>
-        </aside>
+            </aside>
+        </div>
     );
 }
 

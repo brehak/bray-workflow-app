@@ -15,7 +15,7 @@ import {
     CanvasRenderer,
 } from '@particle-academy/fancy-echarts';
 import { motion, AnimatePresence, LayoutGroup } from 'framer-motion';
-import { Settings, BarChart3, Layers, Tag as TagIcon, TrendingUp, Zap, Tags, GitBranch, Clock, Split, CalendarDays, Plus, LayoutTemplate, Download, Activity, ChevronRight, Check, AlertTriangle } from 'lucide-react';
+import { Settings, BarChart3, Layers, Tag as TagIcon, TrendingUp, Zap, Tags, GitBranch, Clock, Split, CalendarDays, Plus, LayoutTemplate, Download, Activity, ChevronRight, ChevronDown, ArrowUpDown, Check, AlertTriangle } from 'lucide-react';
 import { useMemo, useState, useEffect } from 'react';
 import GradientDivider from '../Components/GradientDivider';
 import Logo from '../Components/Logo';
@@ -339,6 +339,49 @@ function RangeFilter({ value, onChange }) {
     );
 }
 
+// Sort options for the recent-activity feed. Each carries a comparator applied
+// to the (already-sliced) recent set, so switching just re-orders the same items
+// in place — "recent" still means the N most recently updated workflows.
+const ACTIVITY_SORTS = [
+    { key: 'newest', label: 'Newest first', compare: (a, b) => new Date(b.updated_at) - new Date(a.updated_at) },
+    { key: 'oldest', label: 'Oldest first', compare: (a, b) => new Date(a.updated_at) - new Date(b.updated_at) },
+    { key: 'most-steps', label: 'Most steps', compare: (a, b) => (b.steps ?? 0) - (a.steps ?? 0) },
+    { key: 'fewest-steps', label: 'Fewest steps', compare: (a, b) => (a.steps ?? 0) - (b.steps ?? 0) },
+    { key: 'name', label: 'A–Z by name', compare: (a, b) => (a.name ?? '').localeCompare(b.name ?? '') },
+];
+
+// Small styled dropdown for re-ordering the recent-activity feed. Mirrors the
+// card/pill styling used elsewhere on the page (soft border, glass background,
+// indigo focus ring) and stays compact so it sits inline in the section header.
+function ActivitySortControl({ value, onChange }) {
+    return (
+        <label className="relative inline-flex items-center">
+            <span className="sr-only">Sort recent activity</span>
+            <ArrowUpDown
+                size={13}
+                className="pointer-events-none absolute left-2.5 text-gray-400 dark:text-gray-500"
+                aria-hidden="true"
+            />
+            <select
+                value={value}
+                onChange={(e) => onChange(e.target.value)}
+                className="cursor-pointer appearance-none rounded-lg border border-gray-200 bg-white/70 py-1.5 pl-7 pr-7 text-xs font-medium text-gray-600 shadow-sm backdrop-blur-md transition-colors hover:text-gray-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/40 dark:border-gray-800 dark:bg-gray-900/70 dark:text-gray-300 dark:hover:text-white"
+            >
+                {ACTIVITY_SORTS.map((s) => (
+                    <option key={s.key} value={s.key}>
+                        {s.label}
+                    </option>
+                ))}
+            </select>
+            <ChevronDown
+                size={14}
+                className="pointer-events-none absolute right-2 text-gray-400 dark:text-gray-500"
+                aria-hidden="true"
+            />
+        </label>
+    );
+}
+
 export default function Analytics({ workflows }) {
     const { theme } = useTheme();
     const isDark = theme === 'dark';
@@ -380,6 +423,15 @@ export default function Analytics({ workflows }) {
         () => [...workflows].sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at)).slice(0, feedLength),
         [workflows, feedLength],
     );
+
+    // Re-orderable view of the recent feed. The base set (most-recent N) is fixed;
+    // this only changes the order they're displayed in, re-computing instantly
+    // whenever the user picks a different sort option.
+    const [recentSort, setRecentSort] = useState('newest');
+    const sortedRecent = useMemo(() => {
+        const sorter = ACTIVITY_SORTS.find((s) => s.key === recentSort) ?? ACTIVITY_SORTS[0];
+        return [...recent].sort(sorter.compare);
+    }, [recent, recentSort]);
 
     // Clicking a slice/bar jumps to the workflow list with that template/tag
     // pre-applied (WorkflowList seeds its filters from these query params).
@@ -927,7 +979,7 @@ export default function Analytics({ workflows }) {
                                 transition={{ duration: 0.5, ease: 'easeOut', delay: 0.15 }}
                                 className="mt-5 rounded-xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-900"
                             >
-                                <div className="mb-2 flex items-center justify-between gap-3">
+                                <div className="mb-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
                                     <div className="flex items-center gap-2.5">
                                         <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600 dark:bg-indigo-500/15 dark:text-indigo-400">
                                             <Activity size={17} aria-hidden="true" />
@@ -936,17 +988,27 @@ export default function Analytics({ workflows }) {
                                             Recent activity
                                         </Heading>
                                     </div>
-                                    <Text className="text-xs text-gray-400 dark:text-gray-500">
-                                        Last {recent.length} {recent.length === 1 ? 'update' : 'updates'}
-                                    </Text>
+                                    <div className="flex items-center gap-3 self-end sm:self-auto">
+                                        <Text className="text-xs text-gray-400 dark:text-gray-500">
+                                            Last {recent.length} {recent.length === 1 ? 'update' : 'updates'}
+                                        </Text>
+                                        <ActivitySortControl value={recentSort} onChange={setRecentSort} />
+                                    </div>
                                 </div>
+                                <LayoutGroup id="recent-activity">
                                 <ul className="flex flex-col divide-y divide-gray-100 dark:divide-gray-800/80">
-                                    {recent.map((w, i) => (
+                                    {sortedRecent.map((w, i) => (
                                         <motion.li
                                             key={w.id}
+                                            layout
                                             initial={{ opacity: 0, x: 18 }}
                                             animate={{ opacity: 1, x: 0 }}
-                                            transition={{ delay: 0.05 * i, duration: 0.35, ease: 'easeOut' }}
+                                            transition={{
+                                                delay: 0.05 * i,
+                                                duration: 0.35,
+                                                ease: 'easeOut',
+                                                layout: { type: 'spring', stiffness: 500, damping: 42 },
+                                            }}
                                         >
                                             <Link
                                                 href={`/workflow?id=${w.id}`}
@@ -974,6 +1036,7 @@ export default function Analytics({ workflows }) {
                                         </motion.li>
                                     ))}
                                 </ul>
+                                </LayoutGroup>
                             </motion.section>
                             )}
                         </>
