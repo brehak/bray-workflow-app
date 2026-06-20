@@ -14,9 +14,12 @@ import { CHAT_STORAGE_PREFIX, getSettings } from '../lib/settings';
  * workflow changes, it returns the complete new graph; we hand that to
  * `onApplyWorkflow` so the canvas updates automatically.
  *
- * Conversation history persists in localStorage keyed by the workflow (id, or
- * name for unsaved ones), so it survives navigating away and back. It's wiped
- * only when the user explicitly clears the chat (`/clear`).
+ * Conversation history persists in localStorage only for *saved* workflows,
+ * keyed `chat_history_workflow_<id>`, so it survives navigating away and back.
+ * Brand-new blank canvases and freshly launched templates always start from an
+ * empty chat and aren't persisted until the workflow is first saved (at which
+ * point its in-flight conversation is carried forward under the new id). History
+ * is wiped when the user explicitly clears the chat (`/clear` or the trash button).
  *
  * Props:
  *   workflow         — the current { nodes, edges } graph (live from the editor)
@@ -55,14 +58,27 @@ const COMMAND_PROMPTS = {
 };
 
 // ── Chat history persistence ────────────────────────────────────────────────
-// Keyed by workflow so each workflow keeps its own conversation across visits.
-// The prefix is shared with the Settings page (which clears all histories).
-const storageKeyFor = (key) => `${CHAT_STORAGE_PREFIX}${key}`;
+// Only *saved* workflows keep a persisted conversation, stored under
+// `chat_history_workflow_<id>` (the shared prefix lets the Settings page clear
+// all histories at once). The editor passes an `id:<n>` storageKey once a
+// workflow has a DB id; brand-new blank canvases and freshly launched templates
+// arrive as `name:<…>` keys and are deliberately NOT persisted or restored —
+// they always start from an empty chat until the workflow is first saved.
+const SAVED_KEY_PREFIX = 'id:';
+const savedIdFrom = (key) => (key?.startsWith(SAVED_KEY_PREFIX) ? key.slice(SAVED_KEY_PREFIX.length) : null);
+
+// The localStorage key for a workflow's chat history, or null when this
+// workflow has no saved id yet (and therefore shouldn't persist anything).
+const storageKeyFor = (key) => {
+    const id = savedIdFrom(key);
+    return id ? `${CHAT_STORAGE_PREFIX}${id}` : null;
+};
 
 const loadStored = (key) => {
-    if (!key) return null;
+    const storageKey = storageKeyFor(key);
+    if (!storageKey) return null;
     try {
-        const raw = localStorage.getItem(storageKeyFor(key));
+        const raw = localStorage.getItem(storageKey);
         if (!raw) return null;
         const parsed = JSON.parse(raw);
         return Array.isArray(parsed) ? parsed : null;
@@ -72,21 +88,23 @@ const loadStored = (key) => {
 };
 
 const saveStored = (key, messages) => {
-    if (!key) return;
+    const storageKey = storageKeyFor(key);
+    if (!storageKey) return;
     try {
         // A pristine, welcome-only chat isn't worth storing — clear the slot so a
         // fresh visit (or a cleared chat) falls back to the default welcome.
-        if (messages.length <= 1) localStorage.removeItem(storageKeyFor(key));
-        else localStorage.setItem(storageKeyFor(key), JSON.stringify(messages));
+        if (messages.length <= 1) localStorage.removeItem(storageKey);
+        else localStorage.setItem(storageKey, JSON.stringify(messages));
     } catch {
         // Storage unavailable (private mode, quota) — persistence is best-effort.
     }
 };
 
 const removeStored = (key) => {
-    if (!key) return;
+    const storageKey = storageKeyFor(key);
+    if (!storageKey) return;
     try {
-        localStorage.removeItem(storageKeyFor(key));
+        localStorage.removeItem(storageKey);
     } catch {
         // ignore storage failures
     }

@@ -14,9 +14,10 @@ export const SETTINGS_KEY = 'workflow-settings';
 export const GUIDE_SEEN_KEY = 'workflow-guide-seen';
 // Fired (same-tab) whenever settings change, so open views can react if they want.
 export const SETTINGS_EVENT = 'workflow-settings-changed';
-// Prefix for the per-workflow chat histories ChatPanel persists (one key each).
-// Defined here so the Settings page can wipe them all in one place.
-export const CHAT_STORAGE_PREFIX = 'workflow-chat:';
+// Prefix for the per-workflow chat histories ChatPanel persists (one key each,
+// `chat_history_workflow_<id>`). Defined here so the Settings page can wipe them
+// all in one place.
+export const CHAT_STORAGE_PREFIX = 'chat_history_workflow_';
 
 // Option lists — also used to render the Settings controls.
 export const ACCENT_OPTIONS = [
@@ -224,7 +225,7 @@ export function setGuideEnabled(enabled) {
 
 // ── Chat histories (ChatPanel's per-workflow conversations) ─────────────────
 /**
- * Delete every persisted Claude chat history (all `workflow-chat:*` keys).
+ * Delete every persisted Claude chat history (all `chat_history_workflow_*` keys).
  * Returns the number of conversations cleared. Best-effort — storage may be
  * unavailable.
  */
