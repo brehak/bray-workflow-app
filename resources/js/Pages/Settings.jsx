@@ -12,6 +12,7 @@ import {
     ACCENT_OPTIONS,
     AUTOSAVE_OPTIONS,
     CANVAS_BG_OPTIONS,
+    DEFAULT_ZOOM_OPTIONS,
     TAG_OPTIONS,
     ANIMATION_SPEED_OPTIONS,
     TOAST_POSITION_OPTIONS,
@@ -273,6 +274,47 @@ export default function Settings({ workflows = [] }) {
                                     value={settings.canvasBackground}
                                     onValueChange={(v) => update({ canvasBackground: v })}
                                     orientation="vertical"
+                                />
+                            </Row>
+
+                            <Row label="Default zoom level" hint="The zoom the canvas opens at.">
+                                <MultiSwitch
+                                    list={DEFAULT_ZOOM_OPTIONS}
+                                    value={settings.defaultZoom}
+                                    onValueChange={(v) => update({ defaultZoom: v })}
+                                    aria-label="Default zoom level"
+                                />
+                            </Row>
+
+                            <Row label="Show step descriptions" hint="Show the description under each step's name on the canvas.">
+                                <Switch
+                                    checked={settings.showStepDescriptions}
+                                    onCheckedChange={(c) => update({ showStepDescriptions: c })}
+                                    aria-label="Show step descriptions"
+                                />
+                            </Row>
+
+                            <Row label="Highlight active path" hint="Glow the steps a run successfully passed through when it completes.">
+                                <Switch
+                                    checked={settings.highlightActivePath}
+                                    onCheckedChange={(c) => update({ highlightActivePath: c })}
+                                    aria-label="Highlight active path"
+                                />
+                            </Row>
+
+                            <Row label="Show run completion toast" hint="Show a notification when a workflow finishes running.">
+                                <Switch
+                                    checked={settings.showRunCompletionToast}
+                                    onCheckedChange={(c) => update({ showRunCompletionToast: c })}
+                                    aria-label="Show run completion toast"
+                                />
+                            </Row>
+
+                            <Row label="Run feed auto-expand" hint="Automatically open the run feed when you click Run.">
+                                <Switch
+                                    checked={settings.runFeedAutoExpand}
+                                    onCheckedChange={(c) => update({ runFeedAutoExpand: c })}
+                                    aria-label="Run feed auto-expand"
                                 />
                             </Row>
                         </Section>

@@ -40,7 +40,7 @@ import UnsavedChangesModal from '../Components/UnsavedChangesModal';
 import ThemeToggle from '../Components/ThemeToggle';
 import Tooltip from '../Components/Tooltip';
 import { applyFriendlyNodeLabels } from '../lib/friendlyPalette';
-import { getSettings, autoSaveIntervalMs, animationSpeedFactor, toastDurationMs } from '../lib/settings';
+import { getSettings, autoSaveIntervalMs, animationSpeedFactor, toastDurationMs, defaultZoomLevel } from '../lib/settings';
 import { incrementRunsCompleted } from '../lib/runs';
 import '../../css/flow-animations.css';
 
@@ -1780,6 +1780,36 @@ const fireConfetti = () => {
     confetti({ particleCount: 60, spread: 110, startVelocity: 45, origin: { y: 0.7 }, zIndex: 9999 });
 };
 
+// Apply a target zoom to FlowEditor's canvas. FlowEditor bundles its own copy of
+// React Flow and exposes no viewport prop or hook, so we drive its real d3-zoom
+// the same way a trackpad pinch does: dispatch a wheel event on the pane. Going
+// through d3 keeps React Flow's store and node positions in sync (setting the CSS
+// transform directly would desync and snap back on the next interaction).
+//
+// d3-zoom maps a wheel event to `newZoom = zoom * 2^(-deltaY * 0.002)` (no Ctrl,
+// pixel delta) and stores the live transform on the `.react-flow__renderer`
+// element's `__zoom` (that's the node d3-zoom is bound to), which we read to
+// converge precisely. `target` is a scale (1 = 100%). Returns true once applied.
+const applyCanvasZoom = (container, target) => {
+    const surface = container?.querySelector('.react-flow__renderer');
+    if (!surface || !surface.__zoom) return false; // canvas not mounted / panZoom not initialized yet
+    const rect = surface.getBoundingClientRect();
+    if (!rect.width || !rect.height) return false;
+    const cx = rect.left + rect.width / 2;
+    const cy = rect.top + rect.height / 2;
+    // Converge toward the target; one event usually nails it, the loop is a guard
+    // against clamping/rounding. `__zoom.k` updates synchronously per event.
+    for (let i = 0; i < 8; i++) {
+        const current = surface.__zoom.k || 1;
+        if (Math.abs(current - target) / target < 0.005) break;
+        const deltaY = -Math.log2(target / current) / 0.002;
+        surface.dispatchEvent(
+            new WheelEvent('wheel', { deltaY, deltaMode: 0, clientX: cx, clientY: cy, bubbles: true, cancelable: true }),
+        );
+    }
+    return true;
+};
+
 // Wrap an executor registry so each node fires its toast (via the `fire`
 // dispatcher) as it finishes — without touching the underlying executor logic.
 // `hooks.onNodeStart` / `hooks.onNodeDone` / `hooks.onNodeError` let the host
@@ -1799,7 +1829,13 @@ const withToasts = (registry, meta, fire, hooks = {}) => {
             try {
                 const result = await exec(runCtx);
                 const build = meta[id];
-                if (build) fire(build(result));
+                if (build) {
+                    // The terminal (output) node's toast is the "run finished"
+                    // notification — suppress it when "Show run completion toast"
+                    // is off (read live so the change applies on the next run).
+                    const isCompletion = runCtx.node?.data?.kind === 'output';
+                    if (!isCompletion || getSettings().showRunCompletionToast) fire(build(result));
+                }
                 hooks.onNodeDone?.(runCtx.node, result);
                 return result;
             } catch (err) {
@@ -2016,7 +2052,9 @@ function WorkflowEditor() {
     // "run started / complete" lines from the run lifecycle. Accumulates across
     // runs (like the built-in) until cleared. `feedCollapsed` persists on-page.
     const [feed, setFeed] = useState([]);
-    const [feedCollapsed, setFeedCollapsed] = useState(false);
+    // Start expanded only when "Run feed auto-expand" is on; otherwise it stays
+    // collapsed until the user opens it (or, with auto-expand on, a run starts).
+    const [feedCollapsed, setFeedCollapsed] = useState(() => !getSettings().runFeedAutoExpand);
     const feedIdRef = useRef(0);
     const appendFeed = useCallback((partial) => {
         setFeed((f) => {
@@ -2064,6 +2102,9 @@ function WorkflowEditor() {
                 // Clear the previous run's highlighted branch so this run paints
                 // its own path from scratch.
                 setDoneEdgeIds([]);
+                // Auto-open the run feed on Run when the preference is on (read
+                // live so a settings change applies to the next run).
+                if (getSettings().runFeedAutoExpand) setFeedCollapsed(false);
             }
             if (node?.id) currentRunRef.current.nodes[node.id] = 'running';
             currentRunRef.current.lastAt = Date.now();
@@ -2618,6 +2659,30 @@ function WorkflowEditor() {
     // The editor box, so the "Drag to connect" hint can position itself against
     // the node's output port.
     const editorBoxRef = useRef(null);
+
+    // Apply the saved "Default zoom level" once the canvas has mounted. The
+    // built-in fitView frames the graph on load (and on editorKey remounts, e.g.
+    // after an import); we then nudge the zoom to the user's preference. We poll
+    // for a short window so a slightly-late fitView can't leave the wrong zoom —
+    // applyCanvasZoom is a no-op once already at target, so settled frames are
+    // cheap, and we stop early once it's held steady.
+    useEffect(() => {
+        if (!ready) return;
+        const target = defaultZoomLevel(userSettings);
+        let raf = 0;
+        let settled = 0;
+        const start = Date.now();
+        const tick = () => {
+            const container = editorBoxRef.current;
+            const applied = applyCanvasZoom(container, target);
+            const surface = container?.querySelector('.react-flow__renderer');
+            const atTarget = applied && surface?.__zoom && Math.abs((surface.__zoom.k || 1) - target) / target < 0.01;
+            settled = atTarget ? settled + 1 : 0;
+            if (settled < 8 && Date.now() - start < 1200) raf = requestAnimationFrame(tick);
+        };
+        raf = requestAnimationFrame(tick);
+        return () => cancelAnimationFrame(raf);
+    }, [ready, editorKey, userSettings]);
 
     // Briefly pulse the ports of a node the moment it's dropped onto the canvas.
     // We detect a drop as "exactly one new node id appeared" — a wholesale load
@@ -3201,6 +3266,8 @@ function WorkflowEditor() {
                         ref={editorBoxRef}
                         data-canvas-bg={userSettings.canvasBackground}
                         data-anim-speed={userSettings.animationSpeed}
+                        data-show-desc={String(userSettings.showStepDescriptions)}
+                        data-highlight-path={String(userSettings.highlightActivePath)}
                         className={`workflow-editor relative ${running ? 'flow-running' : ''}`}
                     >
                         {/* Pulse the just-dropped node's ports. Injected as a rule keyed on
@@ -3213,7 +3280,7 @@ function WorkflowEditor() {
                             paths. `!important` beats the running edge-flow animation (which
                             paints every edge indigo while a run is in flight) so the chosen
                             branch reads as green immediately and stays green after the run. */}
-                        {doneEdgeIds.length > 0 && (
+                        {userSettings.highlightActivePath && doneEdgeIds.length > 0 && (
                             <style>{`${doneEdgeIds
                                 .map((id) => `.workflow-editor .react-flow__edge[data-id="${id}"] .react-flow__edge-path`)
                                 .join(', ')} { stroke: #22c55e !important; stroke-width: 3.5 !important; stroke-dasharray: none !important; animation: none !important; filter: drop-shadow(0 0 5px rgba(34, 197, 94, 0.9)); }`}</style>

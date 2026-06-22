@@ -43,6 +43,15 @@ export const CANVAS_BG_OPTIONS = [
     { value: 'lines', label: 'Lines', description: 'A faint squared grid.' },
 ];
 
+// Initial canvas zoom. Values are percentages (as strings) so the segmented
+// control renders "50%"… directly; `defaultZoomLevel()` converts to a scale.
+export const DEFAULT_ZOOM_OPTIONS = [
+    { value: '50', label: '50%' },
+    { value: '75', label: '75%' },
+    { value: '100', label: '100%' },
+    { value: '125', label: '125%' },
+];
+
 export const TAG_OPTIONS = [
     'HR',
     'Engineering',
@@ -137,6 +146,11 @@ export const DEFAULT_SETTINGS = {
     accent: 'indigo',
     autoSaveInterval: '30', // seconds, or 'off'
     canvasBackground: 'dots',
+    defaultZoom: '100', // initial canvas zoom as a percentage string ('50' | '75' | '100' | '125')
+    showStepDescriptions: true, // show the description/subtitle under each node label on the canvas
+    highlightActivePath: true, // green glow on successful node paths after a run completes
+    showRunCompletionToast: true, // toast when a workflow finishes running
+    runFeedAutoExpand: true, // auto-open the run feed when a run starts
     defaultTags: [],
     defaultNamePrefix: '',
     animationSpeed: 'normal', // 'slow' | 'normal' | 'fast'
@@ -195,6 +209,12 @@ export function autoSaveIntervalMs(settings = getSettings()) {
 /** Animation-speed multiplier (slow=1.8, normal=1, fast=0.5). */
 export function animationSpeedFactor(settings = getSettings()) {
     return ANIMATION_SPEED_FACTORS[settings.animationSpeed] ?? 1;
+}
+
+/** Initial canvas zoom as a React Flow scale (e.g. '75' → 0.75). Defaults to 1. */
+export function defaultZoomLevel(settings = getSettings()) {
+    const pct = parseInt(settings.defaultZoom, 10);
+    return Number.isFinite(pct) && pct > 0 ? pct / 100 : 1;
 }
 
 /** Toast auto-dismiss duration in milliseconds. */

@@ -109,6 +109,26 @@
     box-shadow: 0 2px 10px rgba(0, 0, 0, 0.6), 0 0 16px rgba(74, 222, 128, 0.9);
 }
 
+/* ── Editor-preference toggles (set as data-* on .workflow-editor) ──────────── */
+
+/* "Show step descriptions" off — hide the subtitle under each node's label. */
+.workflow-editor[data-show-desc='false'] .ff-node__desc {
+    display: none;
+}
+
+/* "Highlight active path" off — drop the green completion glow + its pulse so a
+   finished run leaves the nodes un-highlighted. Higher specificity than the base
+   (and dark) rules above, so it overrides their box-shadow without !important.
+   The done-edge green branch styling is gated separately in Workflow.jsx. */
+.workflow-editor[data-highlight-path='false'] .ff-node--status-done,
+.dark .workflow-editor[data-highlight-path='false'] .ff-node--status-done {
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.1);
+    animation: none;
+}
+.workflow-editor[data-highlight-path='false'] .ff-node--status-done::after {
+    display: none;
+}
+
 /* Pop in with a little overshoot so the checkmark "lands" with weight. */
 @keyframes ff-check-pop {
     0% {

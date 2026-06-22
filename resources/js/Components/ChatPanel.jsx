@@ -321,6 +321,68 @@ const WELCOME_MESSAGE = {
     text: "Hi! I can help you build and modify workflows. Type a message or use / for commands.",
 };
 
+// ── Numbered-option rendering ───────────────────────────────────────────────
+// When Claude offers a set of choices as a numbered list — whether inline
+// ("1) one 2) two 3) three") or across lines ("1. one\n2. two") — we surface
+// each item as a clickable pill button instead of plain text. The regex grabs
+// each "<number>. / )" marker plus the text up to the next marker (or end of
+// string); the `s` flag lets an item span newlines, `g` collects them all.
+const NUMBERED_ITEM_RE = /(\d+[.)]\s+.+?)(?=\d+[.)]|\s*$)/gs;
+
+// Strip the leading "1." / "2)" marker so a button shows — and sends — just the
+// option text, without the number prefix.
+const stripMarker = (item) => item.replace(/^\d+[.)]\s*/, '').trim();
+
+/**
+ * renderMessageContent — turns an assistant reply into renderable content. If
+ * the text contains a numbered list (two or more items), it renders the leading
+ * intro paragraph as normal text and each numbered item as a clickable pill
+ * button; clicking one calls `onSelect(itemText)` which sends it as a new user
+ * message. Plain replies (no list) render as ordinary text unchanged.
+ */
+function renderMessageContent(text, onSelect, disabled) {
+    const matches = typeof text === 'string' ? [...text.matchAll(NUMBERED_ITEM_RE)] : [];
+
+    // Fewer than two numbered items → this isn't an options list; render as text.
+    if (matches.length < 2) {
+        return <span className="whitespace-pre-wrap break-words">{text}</span>;
+    }
+
+    const intro = text.slice(0, matches[0].index).trim();
+    const items = matches.map((m) => stripMarker(m[1].trim())).filter(Boolean);
+
+    return (
+        <div className="flex flex-col gap-2">
+            {intro && <span className="whitespace-pre-wrap break-words">{intro}</span>}
+            <motion.div
+                className="flex flex-col items-start gap-1.5"
+                initial="hidden"
+                animate="show"
+                variants={{ show: { transition: { staggerChildren: 0.05, delayChildren: 0.05 } } }}
+            >
+                {items.map((item, i) => (
+                    <motion.button
+                        key={i}
+                        type="button"
+                        disabled={disabled}
+                        onClick={() => onSelect(item)}
+                        variants={{ hidden: { opacity: 0, y: 6 }, show: { opacity: 1, y: 0 } }}
+                        transition={{ type: 'spring', stiffness: 420, damping: 30 }}
+                        whileHover={disabled ? undefined : { scale: 1.015 }}
+                        whileTap={disabled ? undefined : { scale: 0.985 }}
+                        className="group flex max-w-full items-center gap-2 self-start rounded-full border border-indigo-200/70 bg-indigo-50/70 px-3.5 py-1.5 text-left text-sm font-medium text-indigo-700 shadow-sm transition-colors hover:border-indigo-300 hover:bg-indigo-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-indigo-400/25 dark:bg-indigo-500/10 dark:text-indigo-200 dark:hover:border-indigo-400/40 dark:hover:bg-indigo-500/20"
+                    >
+                        <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-indigo-600/10 text-[11px] font-semibold text-indigo-600 dark:bg-indigo-400/15 dark:text-indigo-300">
+                            {i + 1}
+                        </span>
+                        <span className="break-words">{item}</span>
+                    </motion.button>
+                ))}
+            </motion.div>
+        </div>
+    );
+}
+
 let messageSeq = 0;
 const nextId = () => `m${++messageSeq}`;
 
@@ -333,7 +395,7 @@ const ensureSeqPast = (messages) => {
     }
 };
 
-function MessageBubble({ message }) {
+function MessageBubble({ message, onOptionSelect, optionsDisabled }) {
     const isUser = message.role === 'user';
     return (
         <motion.div
@@ -358,7 +420,13 @@ function MessageBubble({ message }) {
                             : 'rounded-2xl rounded-tl-sm border border-gray-200/70 bg-white/70 px-3 py-2 text-sm text-gray-700 shadow-sm backdrop-blur dark:border-gray-700/60 dark:bg-gray-800/60 dark:text-gray-200'
                     }
                 >
-                    <span className="whitespace-pre-wrap break-words">{message.text}</span>
+                    {/* User turns are always plain text; Claude's replies route through
+                        renderMessageContent so numbered lists become clickable buttons. */}
+                    {isUser ? (
+                        <span className="whitespace-pre-wrap break-words">{message.text}</span>
+                    ) : (
+                        renderMessageContent(message.text, onOptionSelect, optionsDisabled)
+                    )}
                     {message.applied && (
                         <span className="mt-1.5 flex items-center gap-1 text-[11px] font-medium text-emerald-600 dark:text-emerald-400">
                             <Check size={12} />
@@ -951,7 +1019,7 @@ export default function ChatPanel({ workflow, workflowName, onApplyWorkflow, onR
             {/* Message history */}
             <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto px-4 py-4">
                 {messages.map((m) => (
-                    <MessageBubble key={m.id} message={m} />
+                    <MessageBubble key={m.id} message={m} onOptionSelect={send} optionsDisabled={loading} />
                 ))}
                 <AnimatePresence>{loading && <TypingIndicator key="typing" mode={thinkingMode} />}</AnimatePresence>
             </div>
