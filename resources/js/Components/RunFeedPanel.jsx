@@ -1,4 +1,5 @@
 import { motion, AnimatePresence } from 'framer-motion';
+import { ContentRenderer } from '@particle-academy/react-fancy';
 import { Terminal, ChevronDown, ChevronUp, X } from 'lucide-react';
 
 /**
@@ -72,15 +73,30 @@ export default function RunFeedPanel({ feed, collapsed, onToggle, onClear }) {
                             {feed.length === 0 ? (
                                 <p className="text-gray-500">No run events yet.</p>
                             ) : (
-                                feed.map((e) => (
-                                    <div key={e.id} className="flex gap-2 py-px">
-                                        <span className="shrink-0 text-gray-500">{formatTime(e.at)}</span>
-                                        {e.nodeId && <span className="shrink-0 text-violet-300">{e.nodeId}</span>}
-                                        <span className={`flex-1 break-words ${LEVEL_TEXT[e.level] ?? 'text-gray-100'}`}>
-                                            {e.text}
-                                        </span>
-                                    </div>
-                                ))
+                                feed.map((e) => {
+                                    // Claude's 🤖 narration may contain Markdown (bold, lists,
+                                    // code), so render those rows through ContentRenderer.
+                                    // Every other line stays plain mono text. ContentRenderer
+                                    // sanitizes by default (no `unsafe`), so model output can't
+                                    // inject scripts/iframes/handlers.
+                                    const isAi = typeof e.text === 'string' && e.text.startsWith('🤖');
+                                    const textColor = LEVEL_TEXT[e.level] ?? 'text-gray-100';
+                                    return (
+                                        <div key={e.id} className="flex gap-2 py-px">
+                                            <span className="shrink-0 text-gray-500">{formatTime(e.at)}</span>
+                                            {e.nodeId && <span className="shrink-0 text-violet-300">{e.nodeId}</span>}
+                                            {isAi ? (
+                                                <ContentRenderer
+                                                    format="markdown"
+                                                    value={e.text}
+                                                    className={`min-w-0 flex-1 break-words ${textColor}`}
+                                                />
+                                            ) : (
+                                                <span className={`flex-1 break-words ${textColor}`}>{e.text}</span>
+                                            )}
+                                        </div>
+                                    );
+                                })
                             )}
                         </div>
                     </motion.div>

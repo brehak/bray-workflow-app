@@ -1,12 +1,15 @@
 import { useLayoutEffect, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Pencil } from 'lucide-react';
+import WorkflowContentRenderer from './WorkflowContentRenderer';
 
 /**
- * DescriptionField — an inline-editable description. Shows a single truncated
- * line by default (with a subtle "click to edit" hint on hover); clicking it
- * expands into a compact textarea (max ~3 lines) for editing. Clicking outside
- * or pressing Enter collapses it back; Shift+Enter inserts a newline.
+ * DescriptionField — an inline-editable description. When not editing it shows
+ * the description as rendered Markdown (bold, lists, code, links) via
+ * WorkflowContentRenderer, with a subtle "click to edit" hint on hover; clicking
+ * it expands into a compact textarea (max ~3 lines) for plain-text editing.
+ * Clicking outside or pressing Enter collapses it back; Shift+Enter inserts a
+ * newline. The rendered view is height-capped so the header stays compact.
  *
  * Controlled via `value`/`onChange`, so edits live in the parent's state and are
  * saved exactly like before.
@@ -65,20 +68,35 @@ export default function DescriptionField({ value, onChange, placeholder = 'Add a
                     className="block w-full resize-none overflow-y-auto rounded-md border border-indigo-300 bg-white px-2 py-1 text-sm leading-relaxed text-gray-600 outline-none ring-2 ring-indigo-500/15 placeholder-gray-400 dark:border-indigo-500/40 dark:bg-gray-800/70 dark:text-gray-300 dark:placeholder-gray-500"
                 />
             ) : (
-                <button
-                    type="button"
+                // Display state: a clickable region (not a <button>, since the
+                // rendered Markdown is block-level content that can't nest inside
+                // one). Click or Enter/Space enters edit mode, matching the old
+                // button behaviour.
+                <div
+                    role="button"
+                    tabIndex={0}
                     onClick={() => setEditing(true)}
+                    onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            setEditing(true);
+                        }
+                    }}
                     title="Click to edit"
-                    className="group flex w-full items-center gap-2 rounded-md px-2 py-1 text-left text-sm transition-colors hover:bg-gray-100/70 dark:hover:bg-gray-800/40"
+                    className="group flex w-full cursor-text items-start gap-2 rounded-md px-2 py-1 text-left text-sm outline-none transition-colors hover:bg-gray-100/70 focus-visible:ring-2 focus-visible:ring-indigo-500/30 dark:hover:bg-gray-800/40"
                 >
-                    <span className={`min-w-0 truncate ${value ? 'text-gray-500 dark:text-gray-400' : 'text-gray-400 dark:text-gray-500'}`}>
-                        {value || placeholder}
-                    </span>
+                    {value ? (
+                        <div className="min-w-0 flex-1 overflow-hidden" style={{ maxHeight: MAX_HEIGHT }}>
+                            <WorkflowContentRenderer content={value} />
+                        </div>
+                    ) : (
+                        <span className="min-w-0 truncate text-gray-400 dark:text-gray-500">{placeholder}</span>
+                    )}
                     <span className="ml-auto hidden shrink-0 items-center gap-1 text-xs text-gray-400 opacity-0 transition-opacity group-hover:opacity-100 dark:text-gray-500 sm:flex">
                         <Pencil size={11} aria-hidden="true" />
                         click to edit
                     </span>
-                </button>
+                </div>
             )}
         </motion.div>
     );

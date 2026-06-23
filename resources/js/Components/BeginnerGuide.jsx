@@ -1,7 +1,20 @@
 import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Button, Heading, Text } from '@particle-academy/react-fancy';
-import { Sparkles, Blocks, MousePointerClick, Play, Save, X, ArrowLeft, ArrowRight } from 'lucide-react';
+import { Button, ContentRenderer, Heading, Text } from '@particle-academy/react-fancy';
+import {
+    Sparkles,
+    Blocks,
+    MousePointerClick,
+    Play,
+    Save,
+    MessageSquare,
+    BrainCircuit,
+    BarChart3,
+    SlidersHorizontal,
+    X,
+    ArrowLeft,
+    ArrowRight,
+} from 'lucide-react';
 
 // ── Page content ───────────────────────────────────────────────────────────
 // Each page is a header icon + accent gradient + title and a body renderer.
@@ -30,6 +43,59 @@ const Step = ({ n, children }) => (
     </div>
 );
 
+// Markdown body copy for the prose pages. Authored as Markdown (bold, lists,
+// `code`) and rendered through react-fancy's ContentRenderer. Kept at the
+// module margin so leading indentation is never mistaken for a code block.
+const WELCOME_LEAD = `A workflow is a series of steps that happen automatically, one after another. Think of it like a recipe — each step leads to the next.`;
+
+const WELCOME_NOTE = `This quick tour shows you how to build one. It only takes a minute, and you can reopen it anytime from the **Guide** button.`;
+
+const RUN_BODY = `Press **Run** to watch your workflow play out, step by step. Each step lights up as it runs.
+
+The **event feed** at the bottom is a live log — it shows exactly what each step did, in plain language.
+
+**Toast notifications** pop up in the corner to highlight key moments — like an email sent or an approval granted.`;
+
+const SAVE_BODY = `Click **Save** (or press ⌘S) to keep your workflow. It's stored safely, so you can come back to it anytime.
+
+Not sure where to start? Open **Saved Workflows** to browse ready-made templates.
+
+**Duplicate** any template to make a copy, then tweak the steps to fit your own process.`;
+
+const CHAT_BODY = `Open the **chat panel** on the right to build and edit workflows just by describing them — Claude sees your live canvas and applies the changes for you.
+
+Type **\`/\`** to pull up slash commands, including:
+
+- \`/build\` — generate a workflow from a description
+- \`/explain\` — explain what the workflow does
+- \`/run\` — run the workflow
+- \`/optimize\` — suggest ways to improve it
+
+Click any step and the config panel shows an **Ask Claude about this step** section, with **Explain this step** and **Improve this step** buttons.`;
+
+const AI_MODE_BODY = `Check the badge next to the workflow name at the top to see how your steps will run:
+
+- **AI Mode** — action steps are powered by **real Claude AI**, reasoning through each one as it runs.
+- **Demo Mode** — steps use built-in mock data, so you can explore everything without an API key.
+
+In **AI Mode**, Claude decides what happens at each AI-enabled action step — the same reasoning that powers the chat assistant.`;
+
+const ANALYTICS_BODY = `Curious how your workflows are shaping up? Open the **Analytics** page for the big picture.
+
+It tracks things like:
+
+- **Totals** — workflows saved, runs completed, and tags used
+- **Charts** — workflows by template type and tag, plus creation activity over time
+- **Recent activity** — a feed of what you've worked on lately
+
+It's the easiest way to spot trends across everything you've built.`;
+
+const SETTINGS_BODY = `Open the **Settings** page to tailor the editor to how you like to work.
+
+Adjust things like the **theme** and accent color, **auto-save** interval, canvas background and zoom, run-feed behavior, Claude chat preferences, and more.
+
+Set it once, and every workflow follows your preferences.`;
+
 const PAGES = [
     {
         key: 'welcome',
@@ -38,14 +104,16 @@ const PAGES = [
         title: 'Welcome to the Workflow Editor',
         body: () => (
             <div className="space-y-4">
-                <Text className="text-base leading-relaxed text-gray-600 dark:text-gray-300">
-                    A workflow is a series of steps that happen automatically, one after another. Think of it like a
-                    recipe — each step leads to the next.
-                </Text>
-                <Text className="text-sm leading-relaxed text-gray-500 dark:text-gray-400">
-                    This quick tour shows you how to build one. It only takes a minute, and you can reopen it anytime
-                    from the <span className="font-semibold text-gray-700 dark:text-gray-200">Guide</span> button.
-                </Text>
+                <ContentRenderer
+                    format="markdown"
+                    value={WELCOME_LEAD}
+                    className="text-base leading-relaxed text-gray-600 dark:text-gray-300"
+                />
+                <ContentRenderer
+                    format="markdown"
+                    value={WELCOME_NOTE}
+                    className="text-sm leading-relaxed text-gray-500 dark:text-gray-400"
+                />
             </div>
         ),
     },
@@ -106,20 +174,11 @@ const PAGES = [
         accent: 'from-amber-500 to-orange-500',
         title: 'Running Your Workflow',
         body: () => (
-            <div className="space-y-4">
-                <Text className="text-sm leading-relaxed text-gray-600 dark:text-gray-300">
-                    Press <span className="font-semibold text-gray-900 dark:text-white">Run</span> to watch your
-                    workflow play out, step by step. Each step lights up as it runs.
-                </Text>
-                <Text className="text-sm leading-relaxed text-gray-600 dark:text-gray-300">
-                    The <span className="font-semibold text-gray-900 dark:text-white">event feed</span> at the bottom is
-                    a live log — it shows exactly what each step did, in plain language.
-                </Text>
-                <Text className="text-sm leading-relaxed text-gray-600 dark:text-gray-300">
-                    <span className="font-semibold text-gray-900 dark:text-white">Toast notifications</span> pop up in
-                    the corner to highlight key moments — like an email sent or an approval granted.
-                </Text>
-            </div>
+            <ContentRenderer
+                format="markdown"
+                value={RUN_BODY}
+                className="space-y-4 text-sm leading-relaxed text-gray-600 dark:text-gray-300"
+            />
         ),
     },
     {
@@ -128,21 +187,63 @@ const PAGES = [
         accent: 'from-pink-500 to-rose-500',
         title: 'Saving & Templates',
         body: () => (
-            <div className="space-y-4">
-                <Text className="text-sm leading-relaxed text-gray-600 dark:text-gray-300">
-                    Click <span className="font-semibold text-gray-900 dark:text-white">Save</span> (or press ⌘S) to
-                    keep your workflow. It's stored safely, so you can come back to it anytime.
-                </Text>
-                <Text className="text-sm leading-relaxed text-gray-600 dark:text-gray-300">
-                    Not sure where to start? Open{' '}
-                    <span className="font-semibold text-gray-900 dark:text-white">Saved Workflows</span> to browse
-                    ready-made templates.
-                </Text>
-                <Text className="text-sm leading-relaxed text-gray-600 dark:text-gray-300">
-                    <span className="font-semibold text-gray-900 dark:text-white">Duplicate</span> any template to make
-                    a copy, then tweak the steps to fit your own process.
-                </Text>
-            </div>
+            <ContentRenderer
+                format="markdown"
+                value={SAVE_BODY}
+                className="space-y-4 text-sm leading-relaxed text-gray-600 dark:text-gray-300"
+            />
+        ),
+    },
+    {
+        key: 'chat',
+        icon: MessageSquare,
+        accent: 'from-indigo-500 to-purple-500',
+        title: 'Claude AI Chat Assistant',
+        body: () => (
+            <ContentRenderer
+                format="markdown"
+                value={CHAT_BODY}
+                className="space-y-4 text-sm leading-relaxed text-gray-600 dark:text-gray-300"
+            />
+        ),
+    },
+    {
+        key: 'ai-mode',
+        icon: BrainCircuit,
+        accent: 'from-fuchsia-500 to-purple-500',
+        title: 'AI Mode vs Demo Mode',
+        body: () => (
+            <ContentRenderer
+                format="markdown"
+                value={AI_MODE_BODY}
+                className="space-y-4 text-sm leading-relaxed text-gray-600 dark:text-gray-300"
+            />
+        ),
+    },
+    {
+        key: 'analytics',
+        icon: BarChart3,
+        accent: 'from-cyan-500 to-blue-500',
+        title: 'Insights & Analytics',
+        body: () => (
+            <ContentRenderer
+                format="markdown"
+                value={ANALYTICS_BODY}
+                className="space-y-4 text-sm leading-relaxed text-gray-600 dark:text-gray-300"
+            />
+        ),
+    },
+    {
+        key: 'settings',
+        icon: SlidersHorizontal,
+        accent: 'from-slate-500 to-gray-600',
+        title: 'Make It Yours',
+        body: () => (
+            <ContentRenderer
+                format="markdown"
+                value={SETTINGS_BODY}
+                className="space-y-4 text-sm leading-relaxed text-gray-600 dark:text-gray-300"
+            />
         ),
     },
 ];
