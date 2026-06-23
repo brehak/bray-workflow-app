@@ -112,6 +112,15 @@ php artisan serve
 
 Then open the URL printed by `php artisan serve` (by default <http://localhost:8000>).
 
+### Front-end tests
+
+React components are tested with **[Vitest](https://vitest.dev)** + **[Testing Library](https://testing-library.com)** (jsdom):
+
+```bash
+npm test         # run the suite once
+npm run test:watch   # re-run on change
+```
+
 ---
 
 ## Templates
@@ -141,6 +150,17 @@ Fancy Workflows is a showcase for **[Fancy UI](https://ui.particle.academy) by [
 - **[`fancy-flow`](https://ui.particle.academy)** — the node-based canvas that powers the visual workflow editor.
 
 If you like what you see here, explore the full toolkit at **[ui.particle.academy](https://ui.particle.academy)**.
+
+---
+
+## Rich content rendering
+
+Node descriptions are rendered as styled prose via [`react-fancy`'s `ContentRenderer`](https://ui.particle.academy/packages/react-fancy/content-renderer), wrapped in a single reusable component so the configuration lives in one place.
+
+- **Where it's used** — `resources/js/Components/NodeConfigPanel.jsx`, the node detail panel on the editor. A read-only **Preview** of the selected node's description renders below the editable Description field. This is currently the only integration point.
+- **The wrapper** — `resources/js/Components/WorkflowContentRenderer.jsx` is the single entry point. It centralises the renderer config, normalises legacy/empty values (`resources/js/lib/content.js`), and shows a muted fallback when there's no content.
+- **Expected content format** — **Markdown** (`WORKFLOW_CONTENT_FORMAT` in `resources/js/lib/content.js`). Plain text is a valid subset of Markdown, so existing string descriptions render unchanged while authors can add `**bold**`, lists, links, and other Markdown going forward.
+- **Sanitization** — rendering is **always sanitized**. `ContentRenderer` strips `<script>`/`<iframe>`/`<style>`/`<form>` and friends, removes `on*` event-handler attributes, and filters `href`/`src` to a safe-protocol allow-list (dropping `javascript:`, `data:`, etc.). The wrapper never forwards the `unsafe` prop, so there is no path to render raw, unsanitized HTML.
 
 ---
 

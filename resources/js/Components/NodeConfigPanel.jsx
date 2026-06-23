@@ -1,4 +1,5 @@
 import { Input, Textarea } from '@particle-academy/react-fancy';
+import WorkflowContentRenderer from './WorkflowContentRenderer';
 
 /**
  * NodeConfigPanel — the right-sidebar editor for the node currently selected on
@@ -102,6 +103,14 @@ export default function NodeConfigPanel({ node, onChange }) {
                 value={node.data?.description ?? ''}
                 onValueChange={(v) => setData({ description: v })}
             />
+
+            {/* Read-only, sanitised preview of the description. Supports Markdown
+                (e.g. **bold**, lists, links) while older plain-text descriptions
+                render unchanged. */}
+            <div data-testid="node-description-preview" className="flex flex-col gap-1">
+                <span className="text-xs font-medium text-gray-500 dark:text-gray-400">Preview</span>
+                <WorkflowContentRenderer content={node.data?.description} />
+            </div>
 
             {/* Type-specific fields. */}
             {fields.map((f) => {
