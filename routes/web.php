@@ -32,6 +32,11 @@ Route::get('/settings', function () {
 // Workflow analytics dashboard — aggregates the saved workflows into charts.
 Route::get('/analytics', [AnalyticsController::class, 'index'])->name('analytics');
 
+// Download a workflow's graph as a BPMN 2.0 XML file. Declared before the
+// apiResource so the nested `export/bpmn` segment resolves to this action.
+Route::post('/workflows/{workflow}/export/bpmn', [WorkflowController::class, 'exportBpmn'])
+    ->name('workflows.export.bpmn');
+
 Route::apiResource('workflows', WorkflowController::class);
 
 // Agentic AI node executor — reasons through a single workflow step via Prism/Claude.

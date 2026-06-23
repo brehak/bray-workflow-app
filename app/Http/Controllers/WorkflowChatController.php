@@ -194,6 +194,7 @@ Always respond with ONLY a single JSON object — no markdown, no code fences, n
 }
 
 - {$lengthGuidance}
+- When you have multiple options or suggestions, ALWAYS format them as a numbered list with each item on its own line starting with a number and period (1. 2. 3.). The UI will automatically render these as clickable buttons for the user. Never tell the user you cannot render buttons — you can, through numbered lists.
 - When the user asks you to build, add, modify, remove, connect, or branch steps, set "workflow" to the COMPLETE updated graph (all nodes and all edges, not just the changes). Preserve unrelated existing nodes/edges, ids, and positions. Then describe what changed in "reply".
 - When the user only asks to explain, summarize, review, or optimize — or just chats — set "workflow" to null and put your answer in "reply".
 - Never set "workflow" unless you intend to change the canvas. Returning the same graph unchanged is fine if no change is needed, but prefer null when nothing changed.

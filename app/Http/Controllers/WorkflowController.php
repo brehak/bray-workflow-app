@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Workflow;
+use App\Services\BpmnExporter;
 use Illuminate\Http\Request;
 
 class WorkflowController extends Controller
@@ -56,5 +57,18 @@ class WorkflowController extends Controller
         $workflow->delete();
 
         return response()->json(['deleted' => true]);
+    }
+
+    /**
+     * Export a workflow's graph as a downloadable BPMN 2.0 file.
+     */
+    public function exportBpmn(Workflow $workflow, BpmnExporter $exporter)
+    {
+        $xml = $exporter->export($workflow);
+
+        return response($xml, 200, [
+            'Content-Type'        => 'application/bpmn+xml',
+            'Content-Disposition' => 'attachment; filename="workflow-' . $workflow->id . '.bpmn"',
+        ]);
     }
 } 

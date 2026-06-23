@@ -22,6 +22,7 @@ import {
     BookOpen,
     Settings as SettingsIcon,
     Trash2,
+    FileCode2,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import GradientDivider from '../Components/GradientDivider';
@@ -2728,6 +2729,44 @@ function WorkflowEditor() {
         URL.revokeObjectURL(url);
     };
 
+    // Export the workflow as a BPMN 2.0 file. The server-side exporter needs a
+    // persisted workflow, so save first if this graph hasn't been stored yet.
+    const exportBpmn = async () => {
+        try {
+            let id = dbId;
+            if (!id) {
+                id = await persist(true);
+                if (!id) throw new Error('save failed');
+            }
+
+            const res = await fetch(`/workflows/${id}/export/bpmn`, {
+                method: 'POST',
+                headers: {
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
+                },
+            });
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+            const blob = await res.blob();
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `workflow-${id}.bpmn`;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            URL.revokeObjectURL(url);
+
+            toast({ title: 'BPMN exported', description: 'Downloaded as .bpmn', variant: 'success' });
+        } catch {
+            toast({
+                title: 'Export failed',
+                description: 'Could not export BPMN. Try saving the workflow first.',
+                variant: 'error',
+            });
+        }
+    };
+
     // Open a file picker, parse the chosen JSON, and load it onto the canvas.
     const importJson = () => {
         const input = document.createElement('input');
@@ -2814,7 +2853,9 @@ function WorkflowEditor() {
             setDbId(data.id);
             setLastSavedSig(sig); // mark this exact snapshot as saved
             if (!isAuto) setStatus('Saved successfully!');
-            return true;
+            // Return the saved id (truthy) so callers that need it immediately —
+            // e.g. BPMN export — don't have to wait for the dbId state to settle.
+            return data.id ?? true;
         } catch {
             if (!isAuto) setStatus('Save failed');
             return false;
@@ -3172,6 +3213,18 @@ function WorkflowEditor() {
                                     >
                                         <Download size={16} aria-hidden="true" />
                                         <span className="hidden lg:inline">Export</span>
+                                    </button>
+                                </Tooltip>
+
+                                <Tooltip label="Export BPMN" placement="bottom">
+                                    <button
+                                        type="button"
+                                        onClick={exportBpmn}
+                                        aria-label="Export workflow as BPMN"
+                                        className="inline-flex items-center gap-2 rounded-full px-2 py-1.5 text-sm font-medium text-gray-700 transition-colors hover:bg-black/5 dark:text-gray-200 dark:hover:bg-white/10 lg:px-3"
+                                    >
+                                        <FileCode2 size={16} aria-hidden="true" />
+                                        <span className="hidden lg:inline">BPMN</span>
                                     </button>
                                 </Tooltip>
 

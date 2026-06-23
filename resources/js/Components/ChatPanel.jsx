@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Sparkles, SlashSquare, ArrowUp, Check, Play, Trash2, Brain } from 'lucide-react';
+import { ContentRenderer } from '@particle-academy/react-fancy';
 import { CHAT_STORAGE_PREFIX, getSettings } from '../lib/settings';
 
 /**
@@ -322,12 +323,15 @@ const WELCOME_MESSAGE = {
 };
 
 // ── Numbered-option rendering ───────────────────────────────────────────────
-// When Claude offers a set of choices as a numbered list — whether inline
-// ("1) one 2) two 3) three") or across lines ("1. one\n2. two") — we surface
-// each item as a clickable pill button instead of plain text. The regex grabs
-// each "<number>. / )" marker plus the text up to the next marker (or end of
-// string); the `s` flag lets an item span newlines, `g` collects them all.
-const NUMBERED_ITEM_RE = /(\d+[.)]\s+.+?)(?=\d+[.)]|\s*$)/gs;
+// When Claude offers a set of choices as a numbered list — whether across lines
+// ("1. one\n2. two") or inline in a paragraph ("1) one 2) two 3) three") — we
+// surface each item as a clickable pill button instead of plain text. A marker
+// is "<number>." or "<number>)" followed by a space, anchored to the start of
+// the string or to whitespace (a newline or space) so each item begins its own
+// line/segment; this also stops mid-sentence decimals like "5.99" from matching.
+// Each capture grabs the marker plus the text up to the next marker (or the end
+// of the string). The `s` flag lets an item span newlines, `g` collects them all.
+const NUMBERED_ITEM_RE = /(?:^|\s)(\d+[.)]\s+.+?)(?=\s\d+[.)]\s|\s*$)/gs;
 
 // Strip the leading "1." / "2)" marker so a button shows — and sends — just the
 // option text, without the number prefix.
@@ -343,9 +347,10 @@ const stripMarker = (item) => item.replace(/^\d+[.)]\s*/, '').trim();
 function renderMessageContent(text, onSelect, disabled) {
     const matches = typeof text === 'string' ? [...text.matchAll(NUMBERED_ITEM_RE)] : [];
 
-    // Fewer than two numbered items → this isn't an options list; render as text.
+    // Fewer than two numbered items → this isn't an options list; render the
+    // assistant text as markdown so bold, lists, code blocks, headings etc. show.
     if (matches.length < 2) {
-        return <span className="whitespace-pre-wrap break-words">{text}</span>;
+        return <ContentRenderer value={text} format="markdown" className="break-words" />;
     }
 
     const intro = text.slice(0, matches[0].index).trim();
@@ -353,9 +358,9 @@ function renderMessageContent(text, onSelect, disabled) {
 
     return (
         <div className="flex flex-col gap-2">
-            {intro && <span className="whitespace-pre-wrap break-words">{intro}</span>}
+            {intro && <ContentRenderer value={intro} format="markdown" className="break-words" />}
             <motion.div
-                className="flex flex-col items-start gap-1.5"
+                className="flex w-full flex-col gap-1.5"
                 initial="hidden"
                 animate="show"
                 variants={{ show: { transition: { staggerChildren: 0.05, delayChildren: 0.05 } } }}
@@ -368,14 +373,13 @@ function renderMessageContent(text, onSelect, disabled) {
                         onClick={() => onSelect(item)}
                         variants={{ hidden: { opacity: 0, y: 6 }, show: { opacity: 1, y: 0 } }}
                         transition={{ type: 'spring', stiffness: 420, damping: 30 }}
-                        whileHover={disabled ? undefined : { scale: 1.015 }}
-                        whileTap={disabled ? undefined : { scale: 0.985 }}
-                        className="group flex max-w-full items-center gap-2 self-start rounded-full border border-indigo-200/70 bg-indigo-50/70 px-3.5 py-1.5 text-left text-sm font-medium text-indigo-700 shadow-sm transition-colors hover:border-indigo-300 hover:bg-indigo-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-indigo-400/25 dark:bg-indigo-500/10 dark:text-indigo-200 dark:hover:border-indigo-400/40 dark:hover:bg-indigo-500/20"
+                        whileTap={disabled ? undefined : { scale: 0.99 }}
+                        className="group flex w-full items-center gap-2.5 rounded-lg border border-gray-200/70 border-l-2 border-l-indigo-400 bg-gray-50/70 px-3 py-2 text-left text-[13px] font-medium leading-snug text-gray-700 transition-colors hover:border-l-indigo-500 hover:bg-indigo-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-700/60 dark:border-l-indigo-400/70 dark:bg-gray-800/40 dark:text-gray-200 dark:hover:border-l-indigo-400 dark:hover:bg-indigo-500/10"
                     >
-                        <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-indigo-600/10 text-[11px] font-semibold text-indigo-600 dark:bg-indigo-400/15 dark:text-indigo-300">
+                        <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-indigo-100 text-[11px] font-semibold text-indigo-600 dark:bg-indigo-500/20 dark:text-indigo-300">
                             {i + 1}
                         </span>
-                        <span className="break-words">{item}</span>
+                        <span className="min-w-0 flex-1 break-words">{item}</span>
                     </motion.button>
                 ))}
             </motion.div>
