@@ -18,6 +18,9 @@ import {
     History,
     Home,
     FolderOpen,
+    Folder,
+    ChevronDown,
+    Plus,
     Tags as TagsIcon,
     BookOpen,
     Settings as SettingsIcon,
@@ -47,6 +50,7 @@ import { applyFriendlyNodeLabels } from '../lib/friendlyPalette';
 import { registerNoteKind, makeNoteNode } from '../lib/noteNode';
 import { getSettings, autoSaveIntervalMs, animationSpeedFactor, toastDurationMs, defaultZoomLevel } from '../lib/settings';
 import { incrementRunsCompleted } from '../lib/runs';
+import { getCustomFolders, addCustomFolder } from '../lib/folders';
 import '../../css/flow-animations.css';
 
 const templates = {
@@ -324,11 +328,12 @@ const graphSignature = (nodes, edges) =>
         })),
     });
 
-const workflowFingerprint = (name, description, tags, nodes, edges) =>
+const workflowFingerprint = (name, description, tags, folder, nodes, edges) =>
     JSON.stringify({
         name: (name ?? '').trim(),
         description: description ?? '',
         tags: tags ?? [],
+        folder: folder ?? null,
         graph: graphSignature(nodes, edges),
     });
 
@@ -2001,6 +2006,151 @@ const SETTINGS_ACCENT_THEMES = {
     teal: { label: 'New Workflow', bar: 'bg-teal-500', badge: 'bg-teal-100 text-teal-700 ring-teal-200 dark:bg-teal-500/15 dark:text-teal-300 dark:ring-teal-500/30', button: 'teal', text: 'text-teal-600 dark:text-teal-400' },
 };
 
+// Compact folder picker for the editor header: file the current workflow into an
+// existing folder, clear it, or create a brand-new folder inline. The dropdown
+// animates in/out with framer-motion to match the rest of the app.
+function FolderSelect({ value, options, onSelect, onCreate }) {
+    const [open, setOpen] = useState(false);
+    const [creating, setCreating] = useState(false);
+    const [draft, setDraft] = useState('');
+    const ref = useRef(null);
+
+    // Close on outside click so the dropdown behaves like a native menu.
+    useEffect(() => {
+        if (!open) return;
+        const onDoc = (e) => {
+            if (ref.current && !ref.current.contains(e.target)) {
+                setOpen(false);
+                setCreating(false);
+            }
+        };
+        document.addEventListener('mousedown', onDoc);
+        return () => document.removeEventListener('mousedown', onDoc);
+    }, [open]);
+
+    const commitNew = () => {
+        const name = draft.trim();
+        if (!name) return;
+        onCreate(name);
+        setDraft('');
+        setCreating(false);
+        setOpen(false);
+    };
+
+    return (
+        <div ref={ref} className="relative">
+            <button
+                type="button"
+                onClick={() => setOpen((o) => !o)}
+                aria-haspopup="listbox"
+                aria-expanded={open}
+                title="File this workflow into a folder"
+                className="inline-flex max-w-[12rem] items-center gap-1.5 rounded-full border border-gray-200 bg-gray-100/80 px-2.5 py-1 text-xs font-medium text-gray-700 transition-colors hover:bg-gray-200/80 dark:border-gray-700 dark:bg-gray-800/80 dark:text-gray-200 dark:hover:bg-gray-700/80"
+            >
+                <Folder size={13} aria-hidden="true" className="shrink-0 text-indigo-500 dark:text-indigo-400" />
+                <span className="truncate">{value || 'No folder'}</span>
+                <ChevronDown
+                    size={13}
+                    aria-hidden="true"
+                    className={`shrink-0 transition-transform ${open ? 'rotate-180' : ''}`}
+                />
+            </button>
+
+            <AnimatePresence>
+                {open && (
+                    <motion.div
+                        role="listbox"
+                        initial={{ opacity: 0, y: -6, scale: 0.97 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        exit={{ opacity: 0, y: -6, scale: 0.97 }}
+                        transition={{ duration: 0.16, ease: 'easeOut' }}
+                        className="absolute left-0 z-50 mt-1.5 w-56 origin-top overflow-hidden rounded-xl border border-gray-200 bg-white p-1 shadow-xl dark:border-gray-700 dark:bg-gray-900"
+                    >
+                        <button
+                            type="button"
+                            onClick={() => {
+                                onSelect(null);
+                                setOpen(false);
+                            }}
+                            className="flex w-full items-center justify-between rounded-lg px-2.5 py-1.5 text-left text-sm text-gray-700 transition-colors hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-800"
+                        >
+                            <span>No folder</span>
+                            {!value && (
+                                <Check size={14} className="text-indigo-500 dark:text-indigo-400" aria-hidden="true" />
+                            )}
+                        </button>
+                        {options.length > 0 && <div className="my-1 h-px bg-gray-100 dark:bg-gray-800" />}
+                        <div className="max-h-52 overflow-y-auto">
+                            {options.map((name) => (
+                                <button
+                                    key={name}
+                                    type="button"
+                                    onClick={() => {
+                                        onSelect(name);
+                                        setOpen(false);
+                                    }}
+                                    className="flex w-full items-center justify-between gap-2 rounded-lg px-2.5 py-1.5 text-left text-sm text-gray-700 transition-colors hover:bg-gray-100 dark:text-gray-200 dark:hover:bg-gray-800"
+                                >
+                                    <span className="flex min-w-0 items-center gap-2">
+                                        <Folder size={13} className="shrink-0 text-gray-400" aria-hidden="true" />
+                                        <span className="truncate">{name}</span>
+                                    </span>
+                                    {value === name && (
+                                        <Check
+                                            size={14}
+                                            className="shrink-0 text-indigo-500 dark:text-indigo-400"
+                                            aria-hidden="true"
+                                        />
+                                    )}
+                                </button>
+                            ))}
+                        </div>
+                        <div className="my-1 h-px bg-gray-100 dark:bg-gray-800" />
+                        {creating ? (
+                            <div className="flex items-center gap-1 p-1">
+                                <input
+                                    autoFocus
+                                    type="text"
+                                    value={draft}
+                                    onChange={(e) => setDraft(e.target.value)}
+                                    onKeyDown={(e) => {
+                                        if (e.key === 'Enter') {
+                                            e.preventDefault();
+                                            commitNew();
+                                        }
+                                        if (e.key === 'Escape') {
+                                            setCreating(false);
+                                            setDraft('');
+                                        }
+                                    }}
+                                    placeholder="Folder name…"
+                                    className="min-w-0 flex-1 rounded-md border border-gray-200 bg-white px-2 py-1 text-sm text-gray-900 outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-500/30 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100"
+                                />
+                                <button
+                                    type="button"
+                                    onClick={commitNew}
+                                    className="shrink-0 rounded-md bg-indigo-600 px-2 py-1 text-xs font-medium text-white transition-colors hover:bg-indigo-500"
+                                >
+                                    Add
+                                </button>
+                            </div>
+                        ) : (
+                            <button
+                                type="button"
+                                onClick={() => setCreating(true)}
+                                className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-sm font-medium text-indigo-600 transition-colors hover:bg-indigo-50 dark:text-indigo-400 dark:hover:bg-indigo-500/10"
+                            >
+                                <Plus size={14} aria-hidden="true" />
+                                New folder
+                            </button>
+                        )}
+                    </motion.div>
+                )}
+            </AnimatePresence>
+        </div>
+    );
+}
+
 function WorkflowEditor() {
     const params = new URLSearchParams(window.location.search);
     const type = params.get('type');
@@ -2320,6 +2470,11 @@ function WorkflowEditor() {
     const [name, setName] = useState(template?.name ?? (isBlankNew ? userSettings.defaultNamePrefix : ''));
     const [description, setDescription] = useState(template?.description ?? '');
     const [tags, setTags] = useState(template?.tags ?? (isBlankNew ? userSettings.defaultTags : []));
+    // Which folder this workflow is filed under (null = unfiled). Persisted via
+    // the `folder` column. `customFolders` are user-created folder names kept in
+    // localStorage so they can be picked even before any workflow lives in them.
+    const [folder, setFolder] = useState(template?.folder ?? null);
+    const [customFolders, setCustomFolders] = useState(() => getCustomFolders());
     const [dbId, setDbId] = useState(null);
     const [status, setStatus] = useState(null);
 
@@ -2412,10 +2567,18 @@ function WorkflowEditor() {
                 setName(data.name);
                 setDescription(data.description ?? '');
                 setTags(data.tags ?? []);
+                setFolder(data.folder ?? null);
                 setDbId(data.id);
                 // Freshly loaded content is, by definition, already saved.
                 setLastSavedSig(
-                    workflowFingerprint(data.name, data.description ?? '', data.tags ?? [], data.nodes, data.edges),
+                    workflowFingerprint(
+                        data.name,
+                        data.description ?? '',
+                        data.tags ?? [],
+                        data.folder ?? null,
+                        data.nodes,
+                        data.edges,
+                    ),
                 );
                 // A fresh load is not a user edit — keep auto-save / the unsaved
                 // indicator dormant until the user actually changes something.
@@ -3071,6 +3234,7 @@ function WorkflowEditor() {
                 setName(data.name ?? '');
                 setDescription(data.description ?? '');
                 setTags(Array.isArray(data.tags) ? data.tags : []);
+                setFolder(typeof data.folder === 'string' ? data.folder : null);
                 setEditorKey((k) => k + 1);
                 toast({
                     title: 'Workflow imported',
@@ -3089,7 +3253,7 @@ function WorkflowEditor() {
     };
 
     // Fingerprint of the current content + whether it differs from the last save.
-    const currentSig = workflowFingerprint(name, description, tags, graph.nodes, graph.edges);
+    const currentSig = workflowFingerprint(name, description, tags, folder, graph.nodes, graph.edges);
     // Until the user's first manual edit (isInitialLoad), a freshly loaded
     // template or saved workflow is never considered "unsaved" — this is what
     // keeps the auto-save, the header indicator, and the navigation guard dormant
@@ -3166,7 +3330,7 @@ function WorkflowEditor() {
         if (savingRef.current) return false; // a save is already in flight
         savingRef.current = true;
         setIsSaving(true);
-        const sig = workflowFingerprint(workingName, description, tags, graph.nodes, graph.edges);
+        const sig = workflowFingerprint(workingName, description, tags, folder, graph.nodes, graph.edges);
         if (!isAuto) setStatus('Saving...');
         try {
             const payload = {
@@ -3175,6 +3339,7 @@ function WorkflowEditor() {
                 nodes: graph.nodes,
                 edges: graph.edges,
                 tags,
+                folder,
             };
 
             const url = dbId ? `/workflows/${dbId}` : '/workflows';
@@ -3313,6 +3478,29 @@ function WorkflowEditor() {
         </div>
     );
 
+    // Folder picker — offers the union of custom folders, this workflow's own
+    // tags (so a "HR"-tagged workflow can be filed into an "HR" folder in one
+    // click) and whatever it's currently filed under. Defined once, placed in
+    // both the lg brand column and the md/sm action row like the tags editor.
+    const folderOptions = [...new Set([...customFolders, ...tags, folder].filter(Boolean))].sort((a, b) =>
+        a.localeCompare(b),
+    );
+    const folderSelect = (
+        <FolderSelect
+            value={folder}
+            options={folderOptions}
+            onSelect={(name) => {
+                markEdited();
+                setFolder(name);
+            }}
+            onCreate={(name) => {
+                setCustomFolders(addCustomFolder(name));
+                markEdited();
+                setFolder(name);
+            }}
+        />
+    );
+
     return (
         <>
             {/* Per-page client-side SEO override on top of the fancy-seo server
@@ -3402,8 +3590,11 @@ function WorkflowEditor() {
                                         }}
                                     />
                                 </div>
-                                {/* Tags under the brand — lg only (md/sm show them in row 2). */}
-                                <div className="mt-0.5 hidden lg:block">{tagsEditor}</div>
+                                {/* Tags + folder under the brand — lg only (md/sm show them in row 2). */}
+                                <div className="mt-0.5 hidden items-center gap-2 lg:flex">
+                                    {tagsEditor}
+                                    {folderSelect}
+                                </div>
                             </div>
                         </div>
 
@@ -3466,6 +3657,7 @@ function WorkflowEditor() {
                                 </button>
                             </Tooltip>
                             <div className={`min-w-0 md:block ${tagsOpen ? 'block' : 'hidden'}`}>{tagsEditor}</div>
+                            {folderSelect}
                         </div>
 
                         {/* Action toolbar + nav on the top line; the save-status indicator

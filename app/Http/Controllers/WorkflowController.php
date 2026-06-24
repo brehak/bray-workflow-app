@@ -24,6 +24,7 @@ class WorkflowController extends Controller
             'edges'       => 'present|array',
             'tags'        => 'nullable|array',
             'tags.*'      => 'string',
+            'folder'      => 'nullable|string|max:255',
         ]);
 
         $workflow = Workflow::create($validated);
@@ -45,6 +46,7 @@ class WorkflowController extends Controller
             'edges'       => 'sometimes|array',
             'tags'        => 'nullable|array',
             'tags.*'      => 'string',
+            'folder'      => 'nullable|string|max:255',
         ]);
 
         $workflow->update($validated);

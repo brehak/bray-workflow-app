@@ -12,6 +12,7 @@ class Workflow extends Model
         'nodes',
         'edges',
         'tags',
+        'folder',
     ];
 
     protected $casts = [

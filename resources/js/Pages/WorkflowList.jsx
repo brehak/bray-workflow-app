@@ -1,7 +1,18 @@
 import { Head, Link, router } from '@inertiajs/react';
 import { Badge, Button, Heading, Text } from '@particle-academy/react-fancy';
 import { motion, AnimatePresence } from 'framer-motion';
-import { AlertTriangle, BarChart3, Check, Search, X, Settings } from 'lucide-react';
+import {
+    AlertTriangle,
+    BarChart3,
+    Check,
+    Search,
+    X,
+    Settings,
+    Folder,
+    FolderOpen,
+    Layers,
+    Plus,
+} from 'lucide-react';
 import { useState, useEffect } from 'react';
 import GradientDivider from '../Components/GradientDivider';
 import Logo from '../Components/Logo';
@@ -10,6 +21,7 @@ import NavButton from '../Components/NavButton';
 import ThemeToggle from '../Components/ThemeToggle';
 import Tooltip from '../Components/Tooltip';
 import { getSettings } from '../lib/settings';
+import { getCustomFolders, addCustomFolder, removeCustomFolder } from '../lib/folders';
 import '../../css/card-glow.css';
 
 const templates = [
@@ -161,6 +173,7 @@ export default function WorkflowList({ workflows }) {
                 nodes: workflow.nodes,
                 edges: workflow.edges,
                 tags: workflow.tags ?? [],
+                folder: workflow.folder ?? null,
             }),
         }).then(() => {
             setStatus(`Duplicated “${workflow.name}”`);
@@ -188,8 +201,81 @@ export default function WorkflowList({ workflows }) {
         const haystack = [w.name ?? '', w.description ?? '', ...(w.tags ?? [])].join(' ').toLowerCase();
         return haystack.includes(q);
     };
+
+    // ── Folders ──────────────────────────────────────────────────────────────
+    // A workflow's `folder` column is the source of truth for membership. The
+    // sidebar lists the union of: folders workflows are actually filed under,
+    // every tag in use (so tags double as ready-made folders like "HR"), and any
+    // custom folders the user created (kept in localStorage so empty ones persist).
+    const [activeFolder, setActiveFolder] = useState(() => initialParams.get('folder') || null);
+    const [customFolders, setCustomFolders] = useState(() => getCustomFolders());
+
+    const folderNames = [
+        ...new Set([
+            ...workflows.map((w) => w.folder).filter(Boolean),
+            ...workflows.flatMap((w) => w.tags ?? []),
+            ...customFolders,
+        ]),
+    ].sort((a, b) => a.localeCompare(b));
+    const folderCount = (name) => workflows.filter((w) => w.folder === name).length;
+
+    // Inline "New Folder" creation in the sidebar.
+    const [showNewFolder, setShowNewFolder] = useState(false);
+    const [newFolderName, setNewFolderName] = useState('');
+    const createFolder = () => {
+        const name = newFolderName.trim();
+        if (!name) return;
+        setCustomFolders(addCustomFolder(name));
+        setNewFolderName('');
+        setShowNewFolder(false);
+        setActiveFolder(name);
+        setStatus(`Created folder “${name}”`);
+    };
+
+    // Drag-and-drop: track which workflow is being dragged and which folder row
+    // is currently hovered (for the drop highlight). `dragOverKey` uses the
+    // sentinel 'ALL' for the "All Workflows" target (which clears a folder).
+    const [draggedId, setDraggedId] = useState(null);
+    const [dragOverKey, setDragOverKey] = useState(null);
+
+    // Persist a workflow's folder via PUT, then reload so the lists re-group.
+    const assignFolder = (workflow, folderName) => {
+        if ((workflow.folder ?? null) === (folderName ?? null)) return;
+        fetch(`/workflows/${workflow.id}`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
+            },
+            body: JSON.stringify({ folder: folderName }),
+        }).then(() => {
+            setStatus(
+                folderName
+                    ? `Moved “${workflow.name}” to ${folderName}`
+                    : `Removed “${workflow.name}” from its folder`,
+            );
+            router.reload();
+        });
+    };
+
+    const handleDropOnFolder = (folderName) => {
+        const workflow = workflows.find((w) => w.id === draggedId);
+        setDragOverKey(null);
+        setDraggedId(null);
+        if (workflow) assignFolder(workflow, folderName);
+    };
+
+    const deleteFolder = (name) => {
+        // Only removes the (empty) custom-folder entry; never touches workflows.
+        setCustomFolders(removeCustomFolder(name));
+        if (activeFolder === name) setActiveFolder(null);
+    };
+
     const visibleWorkflows = workflows.filter(
-        (w) => (!activeTag || (w.tags ?? []).includes(activeTag)) && matchesQuery(w),
+        (w) =>
+            (!activeTag || (w.tags ?? []).includes(activeTag)) &&
+            (!activeFolder || w.folder === activeFolder) &&
+            matchesQuery(w),
     );
 
     return (
@@ -281,45 +367,10 @@ export default function WorkflowList({ workflows }) {
                     <GradientDivider className="mb-8" />
 
                     {/* Saved Workflows Section */}
-                    <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="mb-3">
                         <p className="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
                             Workflows you've built
                         </p>
-                        {/* Search — filters the saved cards in real time. Hidden when
-                            there's nothing saved yet. */}
-                        {workflows.length > 0 && (
-                            <div className="relative w-full sm:w-72">
-                                <Search
-                                    size={15}
-                                    className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500"
-                                    aria-hidden="true"
-                                />
-                                <input
-                                    type="text"
-                                    value={query}
-                                    onChange={(e) => setQuery(e.target.value)}
-                                    placeholder="Search your workflows…"
-                                    aria-label="Search your workflows"
-                                    className="w-full rounded-lg border border-gray-200 bg-white py-2 pl-9 pr-9 text-sm text-gray-900 placeholder-gray-400 shadow-sm transition-colors focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 dark:border-gray-800 dark:bg-gray-900 dark:text-gray-100 dark:placeholder-gray-500 dark:focus:border-indigo-500"
-                                />
-                                <AnimatePresence>
-                                    {query && (
-                                        <motion.button
-                                            type="button"
-                                            onClick={() => setQuery('')}
-                                            aria-label="Clear search"
-                                            initial={{ opacity: 0, scale: 0.6 }}
-                                            animate={{ opacity: 1, scale: 1 }}
-                                            exit={{ opacity: 0, scale: 0.6 }}
-                                            transition={{ duration: 0.15 }}
-                                            className="absolute right-2 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-full text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:text-gray-500 dark:hover:bg-gray-800 dark:hover:text-gray-200"
-                                        >
-                                            <X size={14} aria-hidden="true" />
-                                        </motion.button>
-                                    )}
-                                </AnimatePresence>
-                            </div>
-                        )}
                     </div>
                     {workflows.length === 0 ? (
                         <div className="flex flex-col items-center justify-center py-12 text-center rounded-xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900">
@@ -329,6 +380,185 @@ export default function WorkflowList({ workflows }) {
                         </div>
                     ) : (
                         <>
+                            {/* Folder filter bar — horizontal pills above the tag bar.
+                                Each pill is also a drop target for drag-and-drop filing. */}
+                            <motion.div
+                                initial={{ opacity: 0, y: -8 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                transition={{ duration: 0.3, ease: 'easeOut' }}
+                                className="mb-3 flex flex-wrap items-center gap-2"
+                            >
+                                {/* All Workflows — also a drop target that clears a folder */}
+                                <motion.button
+                                    type="button"
+                                    onClick={() => setActiveFolder(null)}
+                                    onDragOver={(e) => {
+                                        if (draggedId) {
+                                            e.preventDefault();
+                                            setDragOverKey('ALL');
+                                        }
+                                    }}
+                                    onDragLeave={() => setDragOverKey((k) => (k === 'ALL' ? null : k))}
+                                    onDrop={() => handleDropOnFolder(null)}
+                                    whileHover={{ scale: 1.05 }}
+                                    whileTap={{ scale: 0.95 }}
+                                    className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-medium transition-colors ${
+                                        activeFolder === null
+                                            ? 'border-indigo-600 bg-indigo-600 text-white'
+                                            : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-800'
+                                    } ${dragOverKey === 'ALL' ? 'ring-2 ring-inset ring-indigo-400' : ''}`}
+                                >
+                                    <Layers size={14} aria-hidden="true" />
+                                    All Workflows
+                                    <span
+                                        className={`rounded-full px-1.5 text-xs ${
+                                            activeFolder === null
+                                                ? 'bg-white/20 text-white'
+                                                : 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400'
+                                        }`}
+                                    >
+                                        {workflows.length}
+                                    </span>
+                                </motion.button>
+
+                                <AnimatePresence initial={false}>
+                                    {folderNames.map((name) => {
+                                        const count = folderCount(name);
+                                        const isCustomEmpty = count === 0 && customFolders.includes(name);
+                                        const isActive = activeFolder === name;
+                                        return (
+                                            <motion.div
+                                                key={name}
+                                                layout
+                                                initial={{ opacity: 0, scale: 0.8 }}
+                                                animate={{ opacity: 1, scale: 1 }}
+                                                exit={{ opacity: 0, scale: 0.8 }}
+                                                transition={{ duration: 0.2, ease: 'easeOut' }}
+                                                onDragOver={(e) => {
+                                                    if (draggedId) {
+                                                        e.preventDefault();
+                                                        setDragOverKey(name);
+                                                    }
+                                                }}
+                                                onDragLeave={() => setDragOverKey((k) => (k === name ? null : k))}
+                                                onDrop={() => handleDropOnFolder(name)}
+                                                className={`group inline-flex items-center gap-1 rounded-full border py-1.5 pl-3 ${
+                                                    isCustomEmpty ? 'pr-1.5' : 'pr-3'
+                                                } text-sm font-medium transition-colors ${
+                                                    isActive
+                                                        ? 'border-indigo-600 bg-indigo-600 text-white'
+                                                        : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200 dark:hover:bg-gray-800'
+                                                } ${dragOverKey === name ? 'ring-2 ring-inset ring-indigo-400' : ''}`}
+                                            >
+                                                <button
+                                                    type="button"
+                                                    onClick={() =>
+                                                        setActiveFolder((cur) => (cur === name ? null : name))
+                                                    }
+                                                    className="inline-flex items-center gap-1.5"
+                                                >
+                                                    {isActive ? (
+                                                        <FolderOpen size={14} aria-hidden="true" />
+                                                    ) : (
+                                                        <Folder size={14} aria-hidden="true" />
+                                                    )}
+                                                    <span>{name}</span>
+                                                    <span
+                                                        className={`rounded-full px-1.5 text-xs ${
+                                                            isActive
+                                                                ? 'bg-white/20 text-white'
+                                                                : 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400'
+                                                        }`}
+                                                    >
+                                                        {count}
+                                                    </span>
+                                                </button>
+                                                {isCustomEmpty && (
+                                                    <Tooltip label="Remove empty folder">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => deleteFolder(name)}
+                                                            aria-label={`Remove folder ${name}`}
+                                                            className={`inline-flex h-5 w-5 items-center justify-center rounded-full transition-colors ${
+                                                                isActive
+                                                                    ? 'text-white/80 hover:bg-white/20 hover:text-white'
+                                                                    : 'text-gray-400 hover:bg-gray-200 hover:text-gray-700 dark:hover:bg-gray-700 dark:hover:text-gray-200'
+                                                            }`}
+                                                        >
+                                                            <X size={12} aria-hidden="true" />
+                                                        </button>
+                                                    </Tooltip>
+                                                )}
+                                            </motion.div>
+                                        );
+                                    })}
+                                </AnimatePresence>
+
+                                {/* New Folder — inline input when active, else a small button */}
+                                <AnimatePresence mode="wait" initial={false}>
+                                    {showNewFolder ? (
+                                        <motion.div
+                                            key="new-folder-input"
+                                            initial={{ opacity: 0, width: 0 }}
+                                            animate={{ opacity: 1, width: 'auto' }}
+                                            exit={{ opacity: 0, width: 0 }}
+                                            transition={{ duration: 0.2 }}
+                                            className="inline-flex items-center gap-1 overflow-hidden"
+                                        >
+                                            <input
+                                                autoFocus
+                                                type="text"
+                                                value={newFolderName}
+                                                onChange={(e) => setNewFolderName(e.target.value)}
+                                                onKeyDown={(e) => {
+                                                    if (e.key === 'Enter') {
+                                                        e.preventDefault();
+                                                        createFolder();
+                                                    }
+                                                    if (e.key === 'Escape') {
+                                                        setShowNewFolder(false);
+                                                        setNewFolderName('');
+                                                    }
+                                                }}
+                                                placeholder="Folder name…"
+                                                className="w-36 rounded-full border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-900 outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-500/30 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
+                                            />
+                                            <button
+                                                type="button"
+                                                onClick={createFolder}
+                                                aria-label="Create folder"
+                                                className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-indigo-600 text-white transition-colors hover:bg-indigo-500"
+                                            >
+                                                <Check size={14} aria-hidden="true" />
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setShowNewFolder(false);
+                                                    setNewFolderName('');
+                                                }}
+                                                aria-label="Cancel new folder"
+                                                className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-gray-800 dark:hover:text-gray-200"
+                                            >
+                                                <X size={14} aria-hidden="true" />
+                                            </button>
+                                        </motion.div>
+                                    ) : (
+                                        <motion.button
+                                            key="new-folder-button"
+                                            type="button"
+                                            onClick={() => setShowNewFolder(true)}
+                                            whileHover={{ scale: 1.05 }}
+                                            whileTap={{ scale: 0.95 }}
+                                            className="inline-flex items-center gap-1.5 rounded-full border border-dashed border-gray-300 bg-transparent px-3 py-1.5 text-sm font-medium text-indigo-600 transition-colors hover:border-indigo-400 hover:bg-indigo-50 dark:border-gray-600 dark:text-indigo-400 dark:hover:border-indigo-500 dark:hover:bg-indigo-500/10"
+                                        >
+                                            <Plus size={14} aria-hidden="true" />
+                                            New Folder
+                                        </motion.button>
+                                    )}
+                                </AnimatePresence>
+                            </motion.div>
+
                             {/* Tag filter bar */}
                             {allTags.length > 0 && (
                                 <motion.div
@@ -363,6 +593,40 @@ export default function WorkflowList({ workflows }) {
                                 </motion.div>
                             )}
 
+                            {/* Search — filters the saved cards in real time, on its own
+                                row beneath the folder and tag bars. */}
+                            <div className="relative mb-4 w-full sm:w-72">
+                                <Search
+                                    size={15}
+                                    className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500"
+                                    aria-hidden="true"
+                                />
+                                <input
+                                    type="text"
+                                    value={query}
+                                    onChange={(e) => setQuery(e.target.value)}
+                                    placeholder="Search your workflows…"
+                                    aria-label="Search your workflows"
+                                    className="w-full rounded-lg border border-gray-200 bg-white py-2 pl-9 pr-9 text-sm text-gray-900 placeholder-gray-400 shadow-sm transition-colors focus:border-indigo-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 dark:border-gray-800 dark:bg-gray-900 dark:text-gray-100 dark:placeholder-gray-500 dark:focus:border-indigo-500"
+                                />
+                                <AnimatePresence>
+                                    {query && (
+                                        <motion.button
+                                            type="button"
+                                            onClick={() => setQuery('')}
+                                            aria-label="Clear search"
+                                            initial={{ opacity: 0, scale: 0.6 }}
+                                            animate={{ opacity: 1, scale: 1 }}
+                                            exit={{ opacity: 0, scale: 0.6 }}
+                                            transition={{ duration: 0.15 }}
+                                            className="absolute right-2 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-full text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:text-gray-500 dark:hover:bg-gray-800 dark:hover:text-gray-200"
+                                        >
+                                            <X size={14} aria-hidden="true" />
+                                        </motion.button>
+                                    )}
+                                </AnimatePresence>
+                            </div>
+
                             {visibleWorkflows.length === 0 ? (
                                 q ? (
                                     <div className="flex flex-col items-center justify-center py-12 text-center rounded-xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900">
@@ -380,10 +644,22 @@ export default function WorkflowList({ workflows }) {
                                     </div>
                                 ) : (
                                     <div className="flex flex-col items-center justify-center py-12 text-center rounded-xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900">
-                                        <Text className="text-gray-500">No workflows tagged “{activeTag}”.</Text>
+                                        <Text className="text-gray-500">
+                                            {activeFolder
+                                                ? `No workflows in “${activeFolder}” yet.`
+                                                : `No workflows tagged “${activeTag}”.`}
+                                        </Text>
+                                        {activeFolder && (
+                                            <Text className="mt-1 text-sm text-gray-400">
+                                                Drag a workflow card onto this folder to file one here.
+                                            </Text>
+                                        )}
                                         <button
                                             type="button"
-                                            onClick={() => setActiveTag(null)}
+                                            onClick={() => {
+                                                setActiveTag(null);
+                                                setActiveFolder(null);
+                                            }}
                                             className="mt-1 text-sm text-blue-600 hover:underline dark:text-blue-400"
                                         >
                                             Clear filter
@@ -397,11 +673,19 @@ export default function WorkflowList({ workflows }) {
                                             <motion.div
                                                 key={workflow.id}
                                                 layout
+                                                draggable
+                                                onDragStart={() => setDraggedId(workflow.id)}
+                                                onDragEnd={() => {
+                                                    setDraggedId(null);
+                                                    setDragOverKey(null);
+                                                }}
                                                 initial={{ opacity: 0, scale: 0.92 }}
                                                 animate={{ opacity: 1, scale: 1 }}
                                                 exit={{ opacity: 0, scale: 0.92 }}
                                                 transition={{ duration: 0.2, ease: 'easeOut' }}
-                                                className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-900"
+                                                className={`cursor-grab rounded-xl border border-gray-200 bg-white p-6 shadow-sm transition-opacity active:cursor-grabbing dark:border-gray-800 dark:bg-gray-900 ${
+                                                    draggedId === workflow.id ? 'opacity-50' : ''
+                                                }`}
                                             >
                                                 {/* Mini graph preview — simplified dots + lines, not the editor. */}
                                                 <MiniCanvas
@@ -434,9 +718,19 @@ export default function WorkflowList({ workflows }) {
                                                         ))}
                                                     </div>
                                                 )}
+                                                {workflow.folder && (
+                                                    <div className="mt-3">
+                                                        <Badge variant="soft" size="sm" color="indigo">
+                                                            <span className="inline-flex items-center gap-1">
+                                                                <Folder size={11} aria-hidden="true" />
+                                                                {workflow.folder}
+                                                            </span>
+                                                        </Badge>
+                                                    </div>
+                                                )}
                                                 <div className="mt-4 flex gap-2">
                                                     <Tooltip label="Open this workflow in the editor">
-                                                        <Link href={`/workflow?id=${workflow.id}`}>
+                                                        <Link href={`/workflow?id=${workflow.id}`} draggable={false}>
                                                             <Button variant="primary" size="sm">Load</Button>
                                                         </Link>
                                                     </Tooltip>
