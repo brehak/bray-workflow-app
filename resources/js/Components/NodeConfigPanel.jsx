@@ -50,6 +50,7 @@ const TYPE_META = {
     action: { label: 'Action', emoji: '⚙️' },
     decision: { label: 'Decision', emoji: '🔀' },
     output: { label: 'Output', emoji: '🏁' },
+    note: { label: 'Note', emoji: '📝' },
 };
 
 // The outer card (width, border, glass background) is now owned by the parent
@@ -72,10 +73,56 @@ export default function NodeConfigPanel({ node, onChange }) {
     const config = node.data?.config ?? {};
     const meta = TYPE_META[type] ?? { label: type ?? 'Node', emoji: '🔧' };
     const fields = TYPE_FIELDS[type] ?? [];
+    const isNote = type === 'note';
 
     const setData = (patch) => onChange({ ...node, data: { ...node.data, ...patch } });
     const setConfig = (key, value) =>
         onChange({ ...node, data: { ...node.data, config: { ...config, [key]: value } } });
+
+    // Note nodes are sticky-note annotations: their main content is Markdown
+    // stored in `config.content` (which renders right on the canvas), so they get
+    // a dedicated rich editor + live preview instead of the generic description
+    // and per-type fields.
+    if (isNote) {
+        const content = typeof config.content === 'string' ? config.content : '';
+        return (
+            <PanelShell>
+                <header className="flex items-center gap-2 border-b border-gray-100 pb-3 dark:border-gray-800">
+                    <span aria-hidden="true" className="text-lg">
+                        {meta.emoji}
+                    </span>
+                    <span className="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+                        {meta.label}
+                    </span>
+                </header>
+
+                {/* Note title (shown in the note's header bar). */}
+                <Input
+                    label="Title"
+                    value={node.data?.label ?? ''}
+                    placeholder="Note"
+                    onValueChange={(v) => setData({ label: v })}
+                />
+
+                {/* Markdown body — supports **bold**, lists, links, headings, etc. */}
+                <Textarea
+                    label="Content (Markdown)"
+                    description="Write in Markdown — it renders formatted on the note."
+                    rows={10}
+                    value={content}
+                    placeholder={'e.g. **Remember:** double-check the\n- budget\n- timeline'}
+                    onValueChange={(v) => setConfig('content', v)}
+                    className="font-mono text-xs"
+                />
+
+                {/* Live, sanitised preview of the rendered note. */}
+                <div data-testid="note-content-preview" className="flex flex-col gap-1">
+                    <span className="text-xs font-medium text-gray-500 dark:text-gray-400">Preview</span>
+                    <WorkflowContentRenderer content={content} fallback="Nothing to preview yet." />
+                </div>
+            </PanelShell>
+        );
+    }
 
     return (
         <PanelShell>

@@ -87,7 +87,10 @@ export default function DescriptionField({ value, onChange, placeholder = 'Add a
                 >
                     {value ? (
                         <div className="min-w-0 flex-1 overflow-hidden" style={{ maxHeight: MAX_HEIGHT }}>
-                            <WorkflowContentRenderer content={value} />
+                            <WorkflowContentRenderer
+                                content={value}
+                                className="text-gray-600 dark:text-gray-300"
+                            />
                         </div>
                     ) : (
                         <span className="min-w-0 truncate text-gray-400 dark:text-gray-500">{placeholder}</span>

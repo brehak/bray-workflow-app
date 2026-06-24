@@ -62,6 +62,9 @@ export const FRIENDLY_SECTION_LABELS = {
     AI: 'Smart Actions',
     Connectors: 'Connect & Notify',
     Human: 'Human in the Loop',
+    // The `note` kind's category has no built-in label, so the palette renders
+    // the raw category name ("note"); give it a friendly section title.
+    note: 'Notes',
 };
 
 let applied = false;

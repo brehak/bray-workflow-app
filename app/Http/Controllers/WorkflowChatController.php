@@ -35,6 +35,12 @@ class WorkflowChatController extends Controller
      */
     private const MODEL = 'claude-opus-4-8';
 
+    /**
+     * Max output tokens for a chat turn. Kept generous so longer replies have
+     * ample room to finish without being truncated mid-response.
+     */
+    private const MAX_TOKENS = 8000;
+
     public function chat(Request $request): JsonResponse
     {
         $validated = $request->validate([
@@ -74,7 +80,7 @@ class WorkflowChatController extends Controller
                 ->using(Provider::Anthropic, self::MODEL)
                 ->withSystemPrompt($this->systemPrompt($workflowName, $workflow, $responseLength))
                 ->withMessages($this->buildMessages($validated['conversation_history'] ?? [], $validated['message']))
-                ->withMaxTokens(8000)
+                ->withMaxTokens(self::MAX_TOKENS)
                 ->withClientOptions(['timeout' => 60]) // bound the request so it can't hang
                 ->asText();
 
@@ -183,6 +189,14 @@ Example of CORRECT structure (each branch is fully independent with its own outp
 Apply this rule to every workflow you generate. No exceptions.
 
 Before returning the graph, validate it against these rules: confirm every decision node has both a "true" and "false" edge, confirm that NO edge leaving a non-decision node has a "sourceHandle" property, confirm no node receives incoming edges from two different branch paths (no shared/merge nodes), confirm every non-output node has at least one outgoing edge, and confirm every branch path from the trigger reaches its own output node. Fix any violations (give each branch its own action and output nodes, and strip any "sourceHandle" from non-decision edges) before responding.
+
+# Available commands
+
+The user can invoke these slash commands (the app expands each into a fuller instruction before you see it):
+- /build, /add, /modify, /remove, /connect, /branch, /expand — create or change the workflow; return the COMPLETE updated graph in "workflow".
+- /explain, /summarize, /review, /optimize, /suggest, /example — analyze or answer; set "workflow" to null.
+- /score — score the workflow's health out of 100 across completeness, clarity, efficiency, error handling, and best practices; return a markdown-formatted report in "reply" and set "workflow" to null.
+- /run, /save, /clear, /reset — run, save, or reset the workflow (handled by the app).
 
 # How to respond
 
@@ -332,17 +346,34 @@ PROMPT;
     {
         $text = trim($text);
 
-        // Strip ```json … ``` (or plain ``` … ```) fences if present.
-        if (preg_match('/```(?:json)?\s*(.+?)\s*```/is', $text, $m)) {
-            $text = trim($m[1]);
-        }
-
+        // 1) Try the raw text first. A clean JSON object needs no unwrapping, and
+        //    parsing as-is avoids any fence regex mangling a long reply that
+        //    happens to contain backticks.
         $decoded = json_decode($text, true);
         if (is_array($decoded)) {
             return $decoded;
         }
 
-        // Last resort: grab the first {...} span and try to decode that.
+        // 2) If the whole response is wrapped in a ```json … ``` (or plain ``` … ```)
+        //    fence, peel ONLY the opening and closing fences. A lazy inner match
+        //    (`(.+?)`) would stop at the first inner ``` — so any code fence inside
+        //    the reply would truncate the JSON. Stripping just the outer fences
+        //    keeps the inner content (backticks and all) intact.
+        if (str_starts_with($text, '```')) {
+            $unfenced = preg_replace('/^```(?:json)?[ \t]*\r?\n?/i', '', $text);
+            $unfenced = preg_replace('/\r?\n?```\s*$/', '', $unfenced);
+            $unfenced = trim($unfenced);
+
+            $decoded = json_decode($unfenced, true);
+            if (is_array($decoded)) {
+                return $decoded;
+            }
+
+            $text = $unfenced; // fall through with the unfenced text
+        }
+
+        // 3) Last resort: grab the outermost { … } span (greedy, so it spans the
+        //    entire object even when the reply contains braces) and decode that.
         if (preg_match('/\{.*\}/s', $text, $m)) {
             $decoded = json_decode($m[0], true);
             if (is_array($decoded)) {

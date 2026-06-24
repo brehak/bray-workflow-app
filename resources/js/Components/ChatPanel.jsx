@@ -51,6 +51,8 @@ const COMMAND_PROMPTS = {
     '/summarize': 'Give a short, plain-English summary of this workflow.',
     '/review': 'Review this workflow for issues, gaps, or mistakes, and list what you find.',
     '/optimize': 'Suggest specific ways to improve or optimize this workflow.',
+    '/score':
+        'You are a workflow analyst. Analyze this workflow and give it a health score out of 100. Score it on these criteria: Completeness (are all paths complete?), Clarity (are node labels clear?), Efficiency (any redundant steps?), Error handling (are edge cases covered?), Best practices (follows workflow design patterns?). Format your response as: A large score number, then a brief one-line verdict, then a breakdown of each criteria with its sub-score and a one sentence explanation, then 2-3 specific actionable improvements. Use markdown formatting.',
     '/suggest': 'Suggest a sensible next step to add to this workflow, and offer to add it.',
     '/example': 'Show an example workflow I could build, and offer to create it.',
     '/expand': 'Expand the current workflow with additional useful steps.',
@@ -114,6 +116,11 @@ const removeStored = (key) => {
 // Is this input the explicit "/run" command (optionally with trailing space)?
 const isRunCommand = (text) => /^\/run(\s.*)?$/i.test(text.trim());
 
+// Is this input the "/score" command? Its reply is a formatted markdown health
+// report (score, verdict, per-criteria breakdown, improvements) that we render
+// straight through ContentRenderer rather than splitting into option buttons.
+const isScoreCommand = (text) => /^\/score(\s.*)?$/i.test(text.trim());
+
 // ── Thinking-indicator status stages ────────────────────────────────────────
 // While we wait, the TypingIndicator cycles through a short, fading sequence of
 // status lines so the wait feels like real work happening. We pick the sequence
@@ -135,7 +142,7 @@ const THINKING_STAGES = {
 // Slash commands that change the graph (so the build narrative fits) vs. ones
 // that only answer/explain (so the simpler "thinking" narrative fits).
 const BUILDING_COMMANDS = new Set(['/build', '/add', '/modify', '/remove', '/connect', '/branch', '/expand', '/example', '/suggest']);
-const QUESTION_COMMANDS = new Set(['/explain', '/summarize', '/review', '/optimize', '/save', '/reset']);
+const QUESTION_COMMANDS = new Set(['/explain', '/summarize', '/review', '/optimize', '/score', '/save', '/reset']);
 
 // Decide which thinking narrative to show for a message. Explicit build/question
 // commands map cleanly; plain free-text (the common "build me a…" case) defaults
@@ -295,6 +302,7 @@ export const COMMAND_CATEGORIES = [
             { cmd: '/summarize', desc: 'Give a short summary' },
             { cmd: '/review', desc: 'Review the workflow for issues' },
             { cmd: '/optimize', desc: 'Suggest ways to improve it' },
+            { cmd: '/score', desc: 'Get a health score for this workflow' },
         ],
     },
     {
@@ -344,7 +352,14 @@ const stripMarker = (item) => item.replace(/^\d+[.)]\s*/, '').trim();
  * button; clicking one calls `onSelect(itemText)` which sends it as a new user
  * message. Plain replies (no list) render as ordinary text unchanged.
  */
-function renderMessageContent(text, onSelect, disabled) {
+function renderMessageContent(text, onSelect, disabled, forceMarkdown = false) {
+    // Some replies (e.g. the /score health report) are pre-formatted markdown that
+    // happen to contain numbered items we DON'T want turned into clickable buttons;
+    // render them straight through ContentRenderer as markdown.
+    if (forceMarkdown) {
+        return <ContentRenderer value={text} format="markdown" className="break-words" />;
+    }
+
     const matches = typeof text === 'string' ? [...text.matchAll(NUMBERED_ITEM_RE)] : [];
 
     // Fewer than two numbered items → this isn't an options list; render the
@@ -429,7 +444,7 @@ function MessageBubble({ message, onOptionSelect, optionsDisabled }) {
                     {isUser ? (
                         <span className="whitespace-pre-wrap break-words">{message.text}</span>
                     ) : (
-                        renderMessageContent(message.text, onOptionSelect, optionsDisabled)
+                        renderMessageContent(message.text, onOptionSelect, optionsDisabled, message.forceMarkdown)
                     )}
                     {message.applied && (
                         <span className="mt-1.5 flex items-center gap-1 text-[11px] font-medium text-emerald-600 dark:text-emerald-400">
@@ -715,6 +730,10 @@ export default function ChatPanel({ workflow, workflowName, onApplyWorkflow, onR
         const text = (typeof override === 'string' ? override : draft).trim();
         if (!text || loading) return;
 
+        // `/score` returns a pre-formatted markdown health report; flag its reply
+        // so it renders straight through ContentRenderer (no button conversion).
+        const scoring = isScoreCommand(text);
+
         // `/clear` is a local action — wipe the conversation (and its stored copy).
         if (text === '/clear' || text === '/clear ') {
             setMessages([WELCOME_MESSAGE]);
@@ -905,6 +924,7 @@ export default function ChatPanel({ workflow, workflowName, onApplyWorkflow, onR
                         text: replyText,
                         applied: applied === true,
                         ran: ran === true || (data.run === true && applied),
+                        forceMarkdown: scoring,
                     },
                 ]);
             }

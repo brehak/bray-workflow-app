@@ -23,10 +23,13 @@ import {
     Settings as SettingsIcon,
     Trash2,
     FileCode2,
+    StickyNote,
+    Eraser,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import GradientDivider from '../Components/GradientDivider';
 import ConnectHint from '../Components/ConnectHint';
+import NodeSuggestionPill from '../Components/NodeSuggestionPill';
 import DescriptionField from '../Components/DescriptionField';
 import Logo from '../Components/Logo';
 import NavButton from '../Components/NavButton';
@@ -41,6 +44,7 @@ import UnsavedChangesModal from '../Components/UnsavedChangesModal';
 import ThemeToggle from '../Components/ThemeToggle';
 import Tooltip from '../Components/Tooltip';
 import { applyFriendlyNodeLabels } from '../lib/friendlyPalette';
+import { registerNoteKind, makeNoteNode } from '../lib/noteNode';
 import { getSettings, autoSaveIntervalMs, animationSpeedFactor, toastDurationMs, defaultZoomLevel } from '../lib/settings';
 import { incrementRunsCompleted } from '../lib/runs';
 import '../../css/flow-animations.css';
@@ -330,6 +334,50 @@ const workflowFingerprint = (name, description, tags, nodes, edges) =>
 
 // Cap how many undo steps we retain.
 const MAX_HISTORY = 50;
+
+// ── Run-path highlighting ───────────────────────────────────────────────────
+// After a run, we animate a flowing pulse along the edges that were actually
+// traversed, then settle them into a static green path. These build the CSS
+// selectors (React Flow owns the SVG, so we target it by its data-id) and tune
+// the one-shot pulse timing.
+const edgePathSel = (id) => `.workflow-editor .react-flow__edge[data-id="${id}"] .react-flow__edge-path`;
+const nodeSel = (id) => `.workflow-editor .react-flow__node[data-id="${id}"]`;
+// Seconds between each edge's pulse start (so it travels node-to-node) and how
+// long a single edge's pulse lasts.
+const PATH_PULSE_STEP_S = 0.4;
+const PATH_PULSE_DUR_S = 0.85;
+
+// Order the executed edges into a traversal sequence so the post-run pulse flows
+// node-to-node instead of lighting every edge at once. BFS from entry points
+// (executed sources that nothing in the path leads into), following only edges
+// whose endpoints were both executed. Cycle-safe via a visited-edge set; any
+// path edges the walk doesn't reach (disconnected fragments) are appended so
+// nothing is dropped.
+const orderPathEdges = (pathEdges) => {
+    const out = [];
+    const seen = new Set();
+    const bySource = new Map();
+    const targets = new Set();
+    for (const e of pathEdges) {
+        if (!bySource.has(e.source)) bySource.set(e.source, []);
+        bySource.get(e.source).push(e);
+        targets.add(e.target);
+    }
+    const allSources = [...new Set(pathEdges.map((e) => e.source))];
+    const starts = allSources.filter((s) => !targets.has(s));
+    const queue = starts.length ? [...starts] : allSources;
+    while (queue.length) {
+        const node = queue.shift();
+        for (const e of bySource.get(node) ?? []) {
+            if (seen.has(e.id)) continue;
+            seen.add(e.id);
+            out.push(e.id);
+            queue.push(e.target);
+        }
+    }
+    for (const e of pathEdges) if (!seen.has(e.id)) out.push(e.id);
+    return out;
+};
 
 // localStorage flag controlling the first-run beginner's guide auto-popup.
 const GUIDE_SEEN_KEY = 'workflow-guide-seen';
@@ -1984,6 +2032,9 @@ function WorkflowEditor() {
     useEffect(() => {
         ux.registerKinds();
         applyFriendlyNodeLabels();
+        // Register the sticky-note kind so notes render (with Markdown) on the
+        // canvas and appear in the palette. Idempotent.
+        registerNoteKind();
     }, [ux]);
 
     // `running` drives the edge-flow animation (the canvas wrapper gets the
@@ -2004,6 +2055,18 @@ function WorkflowEditor() {
     // (otherwise stable) executor callbacks on every graph edit.
     const [doneEdgeIds, setDoneEdgeIds] = useState([]);
     const edgesRef = useRef([]);
+
+    // Post-run path highlight. Once a run finishes we work out which nodes ran
+    // (status 'done') and the edges between them, then:
+    //   • `pathHighlight` holds the success edges, the edges/nodes that failed,
+    //     and the success edges in traversal order (so the pulse can travel
+    //     node-to-node). null when there's nothing highlighted.
+    //   • `pathAnimating` is true only while the one-shot flowing pulse plays;
+    //     when it flips false the edges settle into a static green path.
+    // Both are cleared by the "Clear highlights" button and at the start of the
+    // next run. Rendered as injected <style> (React Flow owns the SVG).
+    const [pathHighlight, setPathHighlight] = useState(null);
+    const [pathAnimating, setPathAnimating] = useState(false);
 
     // Run-history capture. `currentRunRef` accumulates the in-flight run (start
     // time, last activity, and each node's status) as the executor hooks fire;
@@ -2100,9 +2163,11 @@ function WorkflowEditor() {
             if (!currentRunRef.current) {
                 currentRunRef.current = { startedAt: Date.now(), lastAt: Date.now(), nodes: {}, error: false };
                 appendFeed({ level: 'info', text: '▶ run started' });
-                // Clear the previous run's highlighted branch so this run paints
-                // its own path from scratch.
+                // Clear the previous run's highlighted branch and the settled
+                // path animation so this run paints its own path from scratch.
                 setDoneEdgeIds([]);
+                setPathHighlight(null);
+                setPathAnimating(false);
                 // Auto-open the run feed on Run when the preference is on (read
                 // live so a settings change applies to the next run).
                 if (getSettings().runFeedAutoExpand) setFeedCollapsed(false);
@@ -2538,6 +2603,32 @@ function WorkflowEditor() {
         scheduleCommit(next);
     };
 
+    // Drop a fresh sticky note onto the canvas (the "Add Note" toolbar button).
+    // We don't have the React Flow viewport here (FlowEditor owns it), so we
+    // place the note near the centroid of the existing nodes — which fitView has
+    // framed — with a small offset, and a per-add jitter so repeated notes don't
+    // stack exactly. The note comes pre-selected, so the config panel opens
+    // straight to it; the new-node pulse and undo/redo history work as usual.
+    const addNote = () => {
+        const nodes = graph.nodes;
+        let position = { x: 80, y: 80 };
+        if (nodes.length > 0) {
+            const cx = nodes.reduce((s, n) => s + (n.position?.x ?? 0), 0) / nodes.length;
+            const cy = nodes.reduce((s, n) => s + (n.position?.y ?? 0), 0) / nodes.length;
+            const jitter = (nodes.length % 5) * 28;
+            position = { x: Math.round(cx + 60 + jitter), y: Math.round(cy - 40 + jitter) };
+        }
+        const note = makeNoteNode(position);
+        const next = {
+            ...graph,
+            // Clear any existing selection so the new note is the only selected node.
+            nodes: [...graph.nodes.map((n) => (n.selected ? { ...n, selected: false } : n)), note],
+        };
+        markEdited(); // adding a note is unsaved work
+        setGraph(next);
+        scheduleCommit(next);
+    };
+
     // Apply a graph proposed by the Claude chat assistant. The backend has
     // already validated the shape ({ nodes, edges }), so we trust it here, strip
     // any stray runtime selection, record it for undo/redo (so the user can undo
@@ -2655,7 +2746,49 @@ function WorkflowEditor() {
         };
         setRunHistory((h) => [entry, ...h].slice(0, 5));
         appendFeed({ level: success ? 'info' : 'error', text: success ? '✓ run complete' : '✗ run failed' });
+
+        // Highlight the path the run actually took. Success edges connect two
+        // executed nodes; an error edge is one whose target failed. Then animate
+        // a one-shot flowing pulse along the success path (ordered so it travels
+        // node-to-node) before it settles into the static green highlight.
+        const doneSet = new Set(nodes.filter((n) => n.status === 'done').map((n) => n.id));
+        const errorSet = new Set(nodes.filter((n) => n.status === 'error').map((n) => n.id));
+        const edges = latestGraphRef.current.edges ?? [];
+        const successEdges = edges.filter((e) => doneSet.has(e.source) && doneSet.has(e.target));
+        const errorEdges = edges.filter(
+            (e) => errorSet.has(e.target) && (doneSet.has(e.source) || errorSet.has(e.source)),
+        );
+        if (successEdges.length || errorEdges.length || errorSet.size) {
+            const orderedEdgeIds = orderPathEdges(successEdges);
+            setPathHighlight({
+                nonce: run.startedAt,
+                successEdgeIds: successEdges.map((e) => e.id),
+                errorEdgeIds: errorEdges.map((e) => e.id),
+                errorNodeIds: [...errorSet],
+                orderedEdgeIds,
+            });
+            setPathAnimating(orderedEdgeIds.length > 0);
+        }
     }, [running, appendFeed]);
+
+    // End the one-shot pulse once it has played the full sequence, leaving the
+    // static green path behind. Keyed on the highlight's nonce so each new run
+    // restarts the timer; the flowing-style block is removed when this flips off.
+    useEffect(() => {
+        if (!pathHighlight || !pathAnimating) return;
+        const n = pathHighlight.orderedEdgeIds.length;
+        const totalMs = (Math.max(0, n - 1) * PATH_PULSE_STEP_S + PATH_PULSE_DUR_S) * 1000 + 200;
+        const t = setTimeout(() => setPathAnimating(false), totalMs);
+        return () => clearTimeout(t);
+    }, [pathHighlight, pathAnimating]);
+
+    // Wipe the run-path highlighting (success path + failure markers). Bound to
+    // the "Clear highlights" toolbar button.
+    const clearHighlights = useCallback(() => {
+        setPathHighlight(null);
+        setPathAnimating(false);
+        setDoneEdgeIds([]);
+    }, []);
 
     // The editor box, so the "Drag to connect" hint can position itself against
     // the node's output port.
@@ -2706,6 +2839,157 @@ function WorkflowEditor() {
         const t = setTimeout(() => setPulseNodeId(null), 1800);
         return () => clearTimeout(t);
     }, [pulseNodeId]);
+
+    // ── Smart node suggestions ──────────────────────────────────────────────
+    // A second after the user drops a node, ask Claude what the most logical next
+    // step would be and float a "+ Suggested: …" chip beside the new node. Clicking
+    // it adds that node, wired to the one just dropped. Only ever one suggestion at
+    // a time; it auto-dismisses after 5s, and dropping another node replaces it.
+    const [nodeSuggestion, setNodeSuggestion] = useState(null); // { anchorId, type, label }
+    const suggestTimerRef = useRef(null); // the 1s "wait before asking" timer
+    const suggestDismissRef = useRef(null); // the 5s auto-dismiss timer
+    const suggestSeqRef = useRef(0); // bumped to invalidate any in-flight request
+
+    // Cancel any pending/active suggestion work and invalidate in-flight requests.
+    const cancelNodeSuggestion = () => {
+        if (suggestTimerRef.current) clearTimeout(suggestTimerRef.current);
+        if (suggestDismissRef.current) clearTimeout(suggestDismissRef.current);
+        suggestTimerRef.current = null;
+        suggestDismissRef.current = null;
+        suggestSeqRef.current += 1;
+    };
+    const dismissNodeSuggestion = () => {
+        cancelNodeSuggestion();
+        setNodeSuggestion(null);
+    };
+
+    // Parse Claude's reply into a { type, label } suggestion. Tolerant of prose
+    // around the JSON and of unquoted keys (`{type: "action", label: "X"}`).
+    // Returns null when nothing usable is found (e.g. the mock no-API-key reply),
+    // so no chip is shown.
+    const parseNodeSuggestion = (reply) => {
+        if (typeof reply !== 'string') return null;
+        const match = reply.match(/\{[\s\S]*\}/);
+        if (!match) return null;
+        let obj = null;
+        try {
+            obj = JSON.parse(match[0]);
+        } catch {
+            try {
+                obj = JSON.parse(match[0].replace(/([{,]\s*)([A-Za-z_]\w*)\s*:/g, '$1"$2":'));
+            } catch {
+                return null;
+            }
+        }
+        const validTypes = ['trigger', 'action', 'decision', 'output'];
+        const type = typeof obj?.type === 'string' && validTypes.includes(obj.type) ? obj.type : 'action';
+        const label = typeof obj?.label === 'string' ? obj.label.trim() : '';
+        if (!label || label.length > 60) return null;
+        return { type, label };
+    };
+
+    // Ask Claude for the next-step suggestion based on the live graph.
+    const fetchNodeSuggestion = async () => {
+        try {
+            const res = await fetch('/api/workflow/chat', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Accept: 'application/json',
+                    'X-CSRF-TOKEN': csrfToken(),
+                },
+                body: JSON.stringify({
+                    message:
+                        'Given this workflow so far, what single node type and label would make the most logical next step? Respond with ONLY a JSON object like: {type: "action", label: "Your suggested label"}. Nothing else.',
+                    workflow_name: name || 'Workflow',
+                    workflow: {
+                        nodes: latestGraphRef.current?.nodes ?? [],
+                        edges: latestGraphRef.current?.edges ?? [],
+                    },
+                }),
+            });
+            if (!res.ok) return null;
+            const data = await res.json();
+            return parseNodeSuggestion(data?.reply);
+        } catch {
+            return null;
+        }
+    };
+
+    // Schedule a suggestion for the just-dropped node: wait 1s, ask Claude, then
+    // (if still relevant) show the chip and arm the 5s auto-dismiss.
+    const scheduleNodeSuggestion = (anchorId) => {
+        cancelNodeSuggestion();
+        setNodeSuggestion(null);
+        const seq = suggestSeqRef.current;
+        suggestTimerRef.current = setTimeout(async () => {
+            const result = await fetchNodeSuggestion();
+            // Superseded by a newer drop / dismissal while we were waiting?
+            if (suggestSeqRef.current !== seq) return;
+            // The anchor node must still be on the canvas to pin the chip to.
+            if (!result || !latestGraphRef.current?.nodes?.some((n) => n.id === anchorId)) return;
+            setNodeSuggestion({ anchorId, ...result });
+            suggestDismissRef.current = setTimeout(() => {
+                if (suggestSeqRef.current === seq) setNodeSuggestion(null);
+            }, 5000);
+        }, 1000);
+    };
+
+    // Add the suggested node to the canvas, wired to its anchor. Lays it one step
+    // (~260px) to the right at the anchor's height, mirroring the AI layout
+    // convention; a decision anchor needs a "true" sourceHandle on the new edge.
+    const acceptNodeSuggestion = () => {
+        const s = nodeSuggestion;
+        if (!s) return;
+        dismissNodeSuggestion();
+        const anchor = graph.nodes.find((n) => n.id === s.anchorId);
+        if (!anchor) return;
+        const pos = anchor.position ?? { x: 0, y: 0 };
+        const newId = `${s.type}-${graph.nodes.length}-${suggestSeqRef.current}`;
+        const newNode = {
+            id: newId,
+            type: s.type,
+            position: { x: (pos.x ?? 0) + 260, y: pos.y ?? 0 },
+            data: { kind: s.type, label: s.label },
+            selected: true,
+        };
+        const newEdge = { id: `e-${s.anchorId}-${newId}`, source: s.anchorId, target: newId };
+        if ((anchor.type ?? anchor.data?.kind) === 'decision') newEdge.sourceHandle = 'true';
+        const next = {
+            nodes: [...graph.nodes.map((n) => (n.selected ? { ...n, selected: false } : n)), newNode],
+            edges: [...graph.edges, newEdge],
+        };
+        markEdited(); // adding a node is unsaved work
+        setGraph(next);
+        scheduleCommit(next);
+    };
+
+    // Detect a drop (exactly one brand-new node — bulk load/import/AI-apply add
+    // many at once) and schedule a suggestion for it. Dropping another node here
+    // re-runs scheduleNodeSuggestion, which cancels the previous one. Note nodes
+    // are annotations, so they never get a suggestion.
+    const prevSuggestNodeIdsRef = useRef(null);
+    useEffect(() => {
+        const ids = new Set(graph.nodes.map((n) => n.id));
+        const prev = prevSuggestNodeIdsRef.current;
+        prevSuggestNodeIdsRef.current = ids;
+        if (!prev) return; // first render / initial load — not a user drop
+        const added = [...ids].filter((id) => !prev.has(id));
+        if (added.length !== 1) return;
+        // Confirmed demo mode (no API key) — skip the call; it'd only mock-reply.
+        if (aiEnabled === false) return;
+        const node = graph.nodes.find((n) => n.id === added[0]);
+        const kind = node?.type ?? node?.data?.kind;
+        if (!node || kind === 'note') {
+            dismissNodeSuggestion();
+            return;
+        }
+        scheduleNodeSuggestion(added[0]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [graph.nodes, aiEnabled]);
+
+    // Tidy up the suggestion timers when the editor unmounts.
+    useEffect(() => () => cancelNodeSuggestion(), []);
 
     // Show the connect hint while the canvas is a single, unconnected node.
     const showConnectHint = ready && graph.nodes.length === 1 && graph.edges.length === 0;
@@ -2815,22 +3099,78 @@ function WorkflowEditor() {
     // Indicator state for the header badge.
     const saveState = isSaving ? 'saving' : hasUnsavedChanges ? 'unsaved' : 'saved';
 
+    // Clean Claude's name suggestion down to a usable workflow name: first line
+    // only, stripped of wrapping quotes and trailing punctuation. Rejects anything
+    // that doesn't look like a short 2–5 word name (e.g. the mock/error reply that
+    // comes back when there's no API key), so we never name a workflow after a
+    // fallback sentence — returning '' lets the caller fall back to asking the user.
+    const cleanSuggestedName = (raw) => {
+        if (typeof raw !== 'string') return '';
+        let suggestion = raw.trim().split('\n')[0].trim();
+        suggestion = suggestion.replace(/^["'`]+|["'`]+$/g, '').replace(/[.\s]+$/, '').trim();
+        if (!suggestion) return '';
+        const words = suggestion.split(/\s+/);
+        if (words.length > 6 || suggestion.length > 60) return '';
+        return suggestion;
+    };
+
+    // Ask Claude for a short name based on the nodes currently on the canvas.
+    // Returns a cleaned name, or '' on any failure (network, no key, odd reply) so
+    // the save path can degrade gracefully.
+    const suggestWorkflowName = async () => {
+        try {
+            const res = await fetch('/api/workflow/chat', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Accept: 'application/json',
+                    'X-CSRF-TOKEN': csrfToken(),
+                },
+                body: JSON.stringify({
+                    message:
+                        'Based on these workflow nodes, suggest a short 2-5 word name for this workflow. Respond with ONLY the name, nothing else.',
+                    workflow_name: 'Workflow',
+                    workflow: { nodes: graph.nodes, edges: graph.edges },
+                }),
+            });
+            if (!res.ok) return '';
+            const data = await res.json();
+            return cleanSuggestedName(data?.reply);
+        } catch {
+            return '';
+        }
+    };
+
     // Shared save core for both the manual button and auto-save. `isAuto` only
     // affects the chatty status text / name prompt (auto-save stays quiet); the
     // network call and bookkeeping are identical. Returns true on success.
     const persist = async (isAuto = false) => {
-        if (!name.trim()) {
-            if (!isAuto) setStatus('Please enter a workflow name');
-            return false;
+        // The name we'll actually save under. When the user manually saves a blank
+        // workflow that already has nodes, auto-name it via Claude first (auto-save
+        // never reaches here — it requires a name — so it's unaffected).
+        let workingName = name;
+        if (!workingName.trim()) {
+            if (!isAuto && graph.nodes.length > 0) {
+                setStatus('Naming your workflow...');
+                const suggested = await suggestWorkflowName();
+                if (suggested) {
+                    workingName = suggested;
+                    setName(suggested);
+                }
+            }
+            if (!workingName.trim()) {
+                if (!isAuto) setStatus('Please enter a workflow name');
+                return false;
+            }
         }
         if (savingRef.current) return false; // a save is already in flight
         savingRef.current = true;
         setIsSaving(true);
-        const sig = workflowFingerprint(name, description, tags, graph.nodes, graph.edges);
+        const sig = workflowFingerprint(workingName, description, tags, graph.nodes, graph.edges);
         if (!isAuto) setStatus('Saving...');
         try {
             const payload = {
-                name,
+                name: workingName,
                 description,
                 nodes: graph.nodes,
                 edges: graph.edges,
@@ -3338,6 +3678,33 @@ function WorkflowEditor() {
                                 .map((id) => `.workflow-editor .react-flow__edge[data-id="${id}"] .react-flow__edge-path`)
                                 .join(', ')} { stroke: #22c55e !important; stroke-width: 3.5 !important; stroke-dasharray: none !important; animation: none !important; filter: drop-shadow(0 0 5px rgba(34, 197, 94, 0.9)); }`}</style>
                         )}
+                        {/* Post-run path highlight. The "settled" block paints the
+                            executed path solid green (and any failed edges/nodes red)
+                            and is present the whole time the highlight exists. The
+                            "flowing" block is layered on top only while the one-shot
+                            pulse plays — injected after the settled block so it wins —
+                            then removed, leaving the static green path. See the
+                            ff-path-pulse keyframe in flow-animations.css. */}
+                        {userSettings.highlightActivePath && pathHighlight && (
+                            <style>{[
+                                pathHighlight.successEdgeIds.length &&
+                                    `${pathHighlight.successEdgeIds.map(edgePathSel).join(', ')} { stroke: #22c55e !important; stroke-width: 3.5 !important; stroke-dasharray: none !important; animation: none; filter: drop-shadow(0 0 5px rgba(34, 197, 94, 0.9)); }`,
+                                pathHighlight.errorEdgeIds.length &&
+                                    `${pathHighlight.errorEdgeIds.map(edgePathSel).join(', ')} { stroke: #ef4444 !important; stroke-width: 3.5 !important; stroke-dasharray: none !important; animation: none !important; filter: drop-shadow(0 0 5px rgba(239, 68, 68, 0.9)); }`,
+                                pathHighlight.errorNodeIds.length &&
+                                    `${pathHighlight.errorNodeIds.map((id) => `${nodeSel(id)} .ff-node`).join(', ')} { border-color: #ef4444 !important; box-shadow: 0 0 0 2px #ef4444, 0 0 16px 2px rgba(239, 68, 68, 0.6) !important; }`,
+                            ]
+                                .filter(Boolean)
+                                .join('\n')}</style>
+                        )}
+                        {userSettings.highlightActivePath && pathHighlight && pathAnimating && pathHighlight.orderedEdgeIds.length > 0 && (
+                            <style>{pathHighlight.orderedEdgeIds
+                                .map(
+                                    (id, i) =>
+                                        `${edgePathSel(id)} { animation: ff-path-pulse ${PATH_PULSE_DUR_S}s ease-out ${(i * PATH_PULSE_STEP_S).toFixed(2)}s 1 both !important; }`,
+                                )
+                                .join('\n')}</style>
+                        )}
                         {ready ? (
                             <FlowEditor
                                 // Remount only on import (editorKey bump) so React Flow
@@ -3357,9 +3724,34 @@ function WorkflowEditor() {
                                 // "X nodes · Y edges" is hidden via CSS (.ff-editor__count)
                                 // and replaced with this "steps · connections" version.
                                 extraToolbar={
-                                    <span className="ml-auto text-[11px] text-gray-500 dark:text-gray-400">
-                                        {graph.nodes.length} steps · {graph.edges.length} connections
-                                    </span>
+                                    <div className="ml-auto flex items-center gap-3">
+                                        {/* Remove the post-run path highlighting. Shown only
+                                            when highlighting is on and there's something to clear. */}
+                                        {userSettings.highlightActivePath && (pathHighlight || doneEdgeIds.length > 0) && (
+                                            <button
+                                                type="button"
+                                                onClick={clearHighlights}
+                                                title="Clear the highlighted run path"
+                                                className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-2.5 py-1 text-xs font-medium text-gray-600 shadow-sm transition-colors hover:bg-gray-100 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+                                            >
+                                                <Eraser size={14} aria-hidden="true" />
+                                                Clear highlights
+                                            </button>
+                                        )}
+                                        {/* Drop a sticky note onto the canvas. */}
+                                        <button
+                                            type="button"
+                                            onClick={addNote}
+                                            title="Add a sticky note"
+                                            className="inline-flex items-center gap-1.5 rounded-lg border border-amber-300 bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-800 shadow-sm transition-colors hover:bg-amber-100 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-300 dark:hover:bg-amber-500/20"
+                                        >
+                                            <StickyNote size={14} aria-hidden="true" />
+                                            Add Note
+                                        </button>
+                                        <span className="text-[11px] text-gray-500 dark:text-gray-400">
+                                            {graph.nodes.length} steps · {graph.edges.length} connections
+                                        </span>
+                                    </div>
                                 }
                                 onChange={onGraphChange}
                                 metadata={{
@@ -3432,6 +3824,17 @@ function WorkflowEditor() {
 
                         {/* "Drag to connect" nudge while there's a lone, unconnected node. */}
                         <ConnectHint containerRef={editorBoxRef} active={showConnectHint} />
+
+                        {/* Claude's "next step" suggestion, pinned beside the node
+                            that was just dropped. Clicking it adds the suggested node. */}
+                        {nodeSuggestion && (
+                            <NodeSuggestionPill
+                                containerRef={editorBoxRef}
+                                nodeId={nodeSuggestion.anchorId}
+                                label={nodeSuggestion.label}
+                                onAccept={acceptNodeSuggestion}
+                            />
+                        )}
 
                         {/* Keyboard-shortcuts help — bottom-right, above the zoom controls. */}
                         <div className="absolute bottom-44 right-4 z-20">
