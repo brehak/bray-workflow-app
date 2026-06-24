@@ -13,11 +13,13 @@ class Workflow extends Model
         'edges',
         'tags',
         'folder',
+        'pinned',
     ];
 
     protected $casts = [
-        'nodes' => 'array',
-        'edges' => 'array',
-        'tags'  => 'array',
+        'nodes'  => 'array',
+        'edges'  => 'array',
+        'tags'   => 'array',
+        'pinned' => 'boolean',
     ];
 } 

@@ -37,6 +37,11 @@ Route::get('/analytics', [AnalyticsController::class, 'index'])->name('analytics
 Route::post('/workflows/{workflow}/export/bpmn', [WorkflowController::class, 'exportBpmn'])
     ->name('workflows.export.bpmn');
 
+// Toggle a saved workflow's pinned/favorite state. Declared before the
+// apiResource so the `{id}/pin` segment resolves to this action.
+Route::patch('/workflows/{workflow}/pin', [WorkflowController::class, 'pin'])
+    ->name('workflows.pin');
+
 Route::apiResource('workflows', WorkflowController::class);
 
 // Agentic AI node executor — reasons through a single workflow step via Prism/Claude.

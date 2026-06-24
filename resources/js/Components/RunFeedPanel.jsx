@@ -1,6 +1,9 @@
 import { motion, AnimatePresence } from 'framer-motion';
 import { ContentRenderer } from '@particle-academy/react-fancy';
-import { Terminal, ChevronDown, ChevronUp, X } from 'lucide-react';
+import { Terminal, ChevronDown, ChevronUp, X, Clock } from 'lucide-react';
+
+// Compact, human-friendly duration: sub-second stays in ms, longer rolls to s.
+const formatMs = (ms) => (ms >= 1000 ? `${(ms / 1000).toFixed(2)}s` : `${Math.round(ms)}ms`);
 
 /**
  * RunFeedPanel — the collapsible terminal-style run feed shown under the editor.
@@ -81,6 +84,26 @@ export default function RunFeedPanel({ feed, collapsed, onToggle, onClear }) {
                                     // inject scripts/iframes/handlers.
                                     const isAi = typeof e.text === 'string' && e.text.startsWith('🤖');
                                     const textColor = LEVEL_TEXT[e.level] ?? 'text-gray-100';
+                                    // Timing rows carry a node's execution time — show a clock
+                                    // icon + the duration instead of a log message.
+                                    if (e.durationMs != null) {
+                                        return (
+                                            <motion.div
+                                                key={e.id}
+                                                initial={{ opacity: 0, x: -4 }}
+                                                animate={{ opacity: 1, x: 0 }}
+                                                transition={{ duration: 0.2, ease: 'easeOut' }}
+                                                className="flex gap-2 py-px"
+                                            >
+                                                <span className="shrink-0 text-gray-500">{formatTime(e.at)}</span>
+                                                {e.nodeId && <span className="shrink-0 text-violet-300">{e.nodeId}</span>}
+                                                <span className="flex items-center gap-1 text-emerald-300">
+                                                    <Clock size={11} aria-hidden="true" />
+                                                    {formatMs(e.durationMs)}
+                                                </span>
+                                            </motion.div>
+                                        );
+                                    }
                                     return (
                                         <div key={e.id} className="flex gap-2 py-px">
                                             <span className="shrink-0 text-gray-500">{formatTime(e.at)}</span>

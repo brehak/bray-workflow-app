@@ -12,6 +12,7 @@ import {
     FolderOpen,
     Layers,
     Plus,
+    Star,
 } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import GradientDivider from '../Components/GradientDivider';
@@ -181,6 +182,36 @@ export default function WorkflowList({ workflows }) {
         });
     };
 
+    // ── Pin / favorite ────────────────────────────────────────────────────────
+    // The server is the source of truth (`workflow.pinned`), but we keep a local
+    // override map so toggling feels instant. `isPinned` reads the override if one
+    // exists, otherwise falls back to the persisted value.
+    const [pinnedOverrides, setPinnedOverrides] = useState({});
+    const isPinned = (w) => pinnedOverrides[w.id] ?? !!w.pinned;
+
+    const togglePin = (workflow) => {
+        const next = !isPinned(workflow);
+        // Optimistic update — flip immediately, then persist.
+        setPinnedOverrides((cur) => ({ ...cur, [workflow.id]: next }));
+        fetch(`/workflows/${workflow.id}/pin`, {
+            method: 'PATCH',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
+            },
+            body: JSON.stringify({ pinned: next }),
+        })
+            .then((res) => {
+                if (!res.ok) throw new Error('Failed to update pin');
+                setStatus(next ? `Pinned “${workflow.name}”` : `Unpinned “${workflow.name}”`);
+            })
+            .catch(() => {
+                // Roll back the optimistic change if the request failed.
+                setPinnedOverrides((cur) => ({ ...cur, [workflow.id]: !next }));
+                setStatus('Could not update pin — please try again.');
+            });
+    };
+
     // Initial filter state can be seeded from the URL — the Analytics charts link
     // here with `?tag=` / `?q=` to pre-filter by a tag or template type.
     const initialParams =
@@ -277,6 +308,116 @@ export default function WorkflowList({ workflows }) {
             (!activeFolder || w.folder === activeFolder) &&
             matchesQuery(w),
     );
+
+    // Pinned workflows float to the top in their own section; the rest follow.
+    const pinnedWorkflows = visibleWorkflows.filter(isPinned);
+    const otherWorkflows = visibleWorkflows.filter((w) => !isPinned(w));
+
+    // Renders a single saved-workflow card. Shared between the Pinned section and
+    // the main grid so both stay in sync.
+    const renderCard = (workflow) => {
+        const pinned = isPinned(workflow);
+        return (
+            <motion.div
+                key={workflow.id}
+                layout
+                draggable
+                onDragStart={() => setDraggedId(workflow.id)}
+                onDragEnd={() => {
+                    setDraggedId(null);
+                    setDragOverKey(null);
+                }}
+                initial={{ opacity: 0, scale: 0.92 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.92 }}
+                transition={{ duration: 0.2, ease: 'easeOut' }}
+                className={`relative cursor-grab rounded-xl border border-gray-200 bg-white p-6 shadow-sm transition-opacity active:cursor-grabbing dark:border-gray-800 dark:bg-gray-900 ${
+                    draggedId === workflow.id ? 'opacity-50' : ''
+                }`}
+            >
+                {/* Pin / favorite toggle */}
+                <Tooltip label={pinned ? 'Unpin workflow' : 'Pin to top'}>
+                    <motion.button
+                        type="button"
+                        onClick={() => togglePin(workflow)}
+                        draggable={false}
+                        aria-label={pinned ? `Unpin ${workflow.name}` : `Pin ${workflow.name}`}
+                        aria-pressed={pinned}
+                        whileHover={{ scale: 1.12 }}
+                        whileTap={{ scale: 0.8 }}
+                        className={`absolute right-3 top-3 z-10 inline-flex h-8 w-8 items-center justify-center rounded-full border transition-colors ${
+                            pinned
+                                ? 'border-amber-300 bg-amber-50 text-amber-500 dark:border-amber-500/40 dark:bg-amber-500/15 dark:text-amber-400'
+                                : 'border-gray-200 bg-white text-gray-400 hover:bg-gray-50 hover:text-gray-600 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-500 dark:hover:bg-gray-800 dark:hover:text-gray-300'
+                        }`}
+                    >
+                        <motion.span
+                            key={pinned ? 'on' : 'off'}
+                            initial={{ rotate: -30, scale: 0.4, opacity: 0 }}
+                            animate={{ rotate: 0, scale: 1, opacity: 1 }}
+                            transition={{ type: 'spring', stiffness: 400, damping: 14 }}
+                            className="inline-flex"
+                        >
+                            <Star size={16} fill={pinned ? 'currentColor' : 'none'} aria-hidden="true" />
+                        </motion.span>
+                    </motion.button>
+                </Tooltip>
+
+                {/* Mini graph preview — simplified dots + lines, not the editor. */}
+                <MiniCanvas nodes={workflow.nodes} edges={workflow.edges} className="mb-4" />
+                <Heading as="h3" size="lg" weight="semibold" className="pr-9">
+                    {workflow.name}
+                </Heading>
+                {workflow.description && (
+                    <Text className="mt-1 text-sm text-gray-500">{workflow.description}</Text>
+                )}
+                {showStepCounts && (
+                    <Text className="mt-2 text-xs text-gray-400">
+                        {workflow.nodes.length} steps · {workflow.edges.length} connections
+                    </Text>
+                )}
+                <Text className="mt-1 text-xs text-gray-400">
+                    Saved {new Date(workflow.created_at).toLocaleDateString()}
+                </Text>
+                {(workflow.tags?.length ?? 0) > 0 && (
+                    <div className="mt-3 flex flex-wrap gap-1.5">
+                        {workflow.tags.map((tag) => (
+                            <Badge key={tag} variant="soft" size="sm" color="blue">
+                                {tag}
+                            </Badge>
+                        ))}
+                    </div>
+                )}
+                {workflow.folder && (
+                    <div className="mt-3">
+                        <Badge variant="soft" size="sm" color="indigo">
+                            <span className="inline-flex items-center gap-1">
+                                <Folder size={11} aria-hidden="true" />
+                                {workflow.folder}
+                            </span>
+                        </Badge>
+                    </div>
+                )}
+                <div className="mt-4 flex gap-2">
+                    <Tooltip label="Open this workflow in the editor">
+                        <Link href={`/workflow?id=${workflow.id}`} draggable={false}>
+                            <Button variant="primary" size="sm">Load</Button>
+                        </Link>
+                    </Tooltip>
+                    <Tooltip label="Save a copy of this workflow">
+                        <Button variant="outline" size="sm" onClick={() => duplicateWorkflow(workflow)}>
+                            Duplicate
+                        </Button>
+                    </Tooltip>
+                    <Tooltip label="Delete this workflow">
+                        <Button variant="outline" size="sm" onClick={() => setPendingDelete(workflow)}>
+                            Delete
+                        </Button>
+                    </Tooltip>
+                </div>
+            </motion.div>
+        );
+    };
 
     return (
         <>
@@ -667,95 +808,41 @@ export default function WorkflowList({ workflows }) {
                                     </div>
                                 )
                             ) : (
-                                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                                    <AnimatePresence mode="popLayout">
-                                        {visibleWorkflows.map((workflow) => (
-                                            <motion.div
-                                                key={workflow.id}
+                                <div className="space-y-6">
+                                    {/* Pinned section — floats to the top with a subtle
+                                        amber-tinted background to set it apart. */}
+                                    <AnimatePresence initial={false}>
+                                        {pinnedWorkflows.length > 0 && (
+                                            <motion.section
+                                                key="pinned-section"
                                                 layout
-                                                draggable
-                                                onDragStart={() => setDraggedId(workflow.id)}
-                                                onDragEnd={() => {
-                                                    setDraggedId(null);
-                                                    setDragOverKey(null);
-                                                }}
-                                                initial={{ opacity: 0, scale: 0.92 }}
-                                                animate={{ opacity: 1, scale: 1 }}
-                                                exit={{ opacity: 0, scale: 0.92 }}
-                                                transition={{ duration: 0.2, ease: 'easeOut' }}
-                                                className={`cursor-grab rounded-xl border border-gray-200 bg-white p-6 shadow-sm transition-opacity active:cursor-grabbing dark:border-gray-800 dark:bg-gray-900 ${
-                                                    draggedId === workflow.id ? 'opacity-50' : ''
-                                                }`}
+                                                initial={{ opacity: 0, y: -8 }}
+                                                animate={{ opacity: 1, y: 0 }}
+                                                exit={{ opacity: 0, y: -8 }}
+                                                transition={{ duration: 0.25, ease: 'easeOut' }}
+                                                className="rounded-2xl border border-amber-200/60 bg-amber-50/40 p-4 dark:border-amber-500/20 dark:bg-amber-500/[0.04]"
                                             >
-                                                {/* Mini graph preview — simplified dots + lines, not the editor. */}
-                                                <MiniCanvas
-                                                    nodes={workflow.nodes}
-                                                    edges={workflow.edges}
-                                                    className="mb-4"
-                                                />
-                                                <Heading as="h3" size="lg" weight="semibold">
-                                                    {workflow.name}
-                                                </Heading>
-                                                {workflow.description && (
-                                                    <Text className="mt-1 text-sm text-gray-500">
-                                                        {workflow.description}
-                                                    </Text>
-                                                )}
-                                                {showStepCounts && (
-                                                    <Text className="mt-2 text-xs text-gray-400">
-                                                        {workflow.nodes.length} steps · {workflow.edges.length} connections
-                                                    </Text>
-                                                )}
-                                                <Text className="mt-1 text-xs text-gray-400">
-                                                    Saved {new Date(workflow.created_at).toLocaleDateString()}
-                                                </Text>
-                                                {(workflow.tags?.length ?? 0) > 0 && (
-                                                    <div className="mt-3 flex flex-wrap gap-1.5">
-                                                        {workflow.tags.map((tag) => (
-                                                            <Badge key={tag} variant="soft" size="sm" color="blue">
-                                                                {tag}
-                                                            </Badge>
-                                                        ))}
-                                                    </div>
-                                                )}
-                                                {workflow.folder && (
-                                                    <div className="mt-3">
-                                                        <Badge variant="soft" size="sm" color="indigo">
-                                                            <span className="inline-flex items-center gap-1">
-                                                                <Folder size={11} aria-hidden="true" />
-                                                                {workflow.folder}
-                                                            </span>
-                                                        </Badge>
-                                                    </div>
-                                                )}
-                                                <div className="mt-4 flex gap-2">
-                                                    <Tooltip label="Open this workflow in the editor">
-                                                        <Link href={`/workflow?id=${workflow.id}`} draggable={false}>
-                                                            <Button variant="primary" size="sm">Load</Button>
-                                                        </Link>
-                                                    </Tooltip>
-                                                    <Tooltip label="Save a copy of this workflow">
-                                                        <Button
-                                                            variant="outline"
-                                                            size="sm"
-                                                            onClick={() => duplicateWorkflow(workflow)}
-                                                        >
-                                                            Duplicate
-                                                        </Button>
-                                                    </Tooltip>
-                                                    <Tooltip label="Delete this workflow">
-                                                        <Button
-                                                            variant="outline"
-                                                            size="sm"
-                                                            onClick={() => setPendingDelete(workflow)}
-                                                        >
-                                                            Delete
-                                                        </Button>
-                                                    </Tooltip>
+                                                <p className="mb-3 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-amber-600 dark:text-amber-400">
+                                                    <Star size={13} fill="currentColor" aria-hidden="true" />
+                                                    Pinned
+                                                </p>
+                                                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                                                    <AnimatePresence mode="popLayout">
+                                                        {pinnedWorkflows.map(renderCard)}
+                                                    </AnimatePresence>
                                                 </div>
-                                            </motion.div>
-                                        ))}
+                                            </motion.section>
+                                        )}
                                     </AnimatePresence>
+
+                                    {/* Everything else */}
+                                    {otherWorkflows.length > 0 && (
+                                        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                                            <AnimatePresence mode="popLayout">
+                                                {otherWorkflows.map(renderCard)}
+                                            </AnimatePresence>
+                                        </div>
+                                    )}
                                 </div>
                             )}
                         </>

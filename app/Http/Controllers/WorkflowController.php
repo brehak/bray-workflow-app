@@ -62,6 +62,22 @@ class WorkflowController extends Controller
     }
 
     /**
+     * Toggle (or explicitly set) a workflow's pinned state.
+     */
+    public function pin(Request $request, Workflow $workflow)
+    {
+        $validated = $request->validate([
+            'pinned' => 'nullable|boolean',
+        ]);
+
+        $workflow->update([
+            'pinned' => $validated['pinned'] ?? ! $workflow->pinned,
+        ]);
+
+        return response()->json($workflow);
+    }
+
+    /**
      * Export a workflow's graph as a downloadable BPMN 2.0 file.
      */
     public function exportBpmn(Workflow $workflow, BpmnExporter $exporter)

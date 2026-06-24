@@ -2311,7 +2311,7 @@ function WorkflowEditor() {
     const handleNodeStart = useCallback(
         (node) => {
             if (!currentRunRef.current) {
-                currentRunRef.current = { startedAt: Date.now(), lastAt: Date.now(), nodes: {}, error: false };
+                currentRunRef.current = { startedAt: Date.now(), lastAt: Date.now(), nodes: {}, timings: {}, error: false };
                 appendFeed({ level: 'info', text: '▶ run started' });
                 // Clear the previous run's highlighted branch and the settled
                 // path animation so this run paints its own path from scratch.
@@ -2322,7 +2322,11 @@ function WorkflowEditor() {
                 // live so a settings change applies to the next run).
                 if (getSettings().runFeedAutoExpand) setFeedCollapsed(false);
             }
-            if (node?.id) currentRunRef.current.nodes[node.id] = 'running';
+            if (node?.id) {
+                currentRunRef.current.nodes[node.id] = 'running';
+                // Stamp the node's start time so we can measure its execution time.
+                currentRunRef.current.timings[node.id] = { start: Date.now() };
+            }
             currentRunRef.current.lastAt = Date.now();
             inflightRef.current += 1;
             // A node is actively running, so the run is definitely not over: keep
@@ -2343,6 +2347,13 @@ function WorkflowEditor() {
             if (currentRunRef.current && node?.id) {
                 currentRunRef.current.nodes[node.id] = 'done';
                 currentRunRef.current.lastAt = Date.now();
+                // Measure how long the node took and surface it in the run feed
+                // with a clock icon (see RunFeedPanel's timing rows).
+                const t = currentRunRef.current.timings[node.id];
+                if (t && t.durationMs == null) {
+                    t.durationMs = Math.max(0, Date.now() - t.start);
+                    appendFeed({ nodeId: node.id, durationMs: t.durationMs, level: 'info' });
+                }
             }
             // For a decision node, light the outgoing edge(s) on the branch it
             // chose. Decision executors return `{ branch: 'true' | 'false' }`,
@@ -2375,7 +2386,7 @@ function WorkflowEditor() {
             // the run stays a single continuous run across slow/AI nodes.
             if (inflightRef.current === 0) armRunOff();
         },
-        [armRunOff],
+        [armRunOff, appendFeed],
     );
 
     const handleNodeError = useCallback(
@@ -2384,6 +2395,8 @@ function WorkflowEditor() {
                 currentRunRef.current.nodes[node.id] = 'error';
                 currentRunRef.current.lastAt = Date.now();
                 currentRunRef.current.error = true;
+                const t = currentRunRef.current.timings[node.id];
+                if (t && t.durationMs == null) t.durationMs = Math.max(0, Date.now() - t.start);
             }
             if (inflightRef.current > 0) inflightRef.current -= 1;
             if (inflightRef.current === 0) armRunOff();
@@ -2897,13 +2910,17 @@ function WorkflowEditor() {
         const nodes = latestGraphRef.current.nodes.map((n) => {
             let status = run.nodes[n.id] ?? 'skipped';
             if (status === 'running') status = 'done';
-            return { id: n.id, label: n.data?.label ?? n.id, status };
+            // Per-node execution time (ms). null for nodes that never ran.
+            const timing = run.timings[n.id];
+            const durationMs = timing?.durationMs != null ? Math.round(timing.durationMs) : null;
+            return { id: n.id, label: n.data?.label ?? n.id, status, durationMs };
         });
         const success = !run.error && !nodes.some((n) => n.status === 'error');
         const entry = {
             id: `run-${run.startedAt}`,
             startedAt: run.startedAt,
             durationSec: Math.max(0, (run.lastAt - run.startedAt) / 1000),
+            totalMs: Math.max(0, Math.round(run.lastAt - run.startedAt)),
             success,
             nodes,
         };
