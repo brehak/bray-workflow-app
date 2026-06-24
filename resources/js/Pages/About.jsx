@@ -9,7 +9,6 @@ import {
     Copy,
     ExternalLink,
     FileJson,
-    Filter,
     GraduationCap,
     History,
     Keyboard,

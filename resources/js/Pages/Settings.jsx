@@ -12,12 +12,12 @@ import {
     ACCENT_OPTIONS,
     AUTOSAVE_OPTIONS,
     CANVAS_BG_OPTIONS,
+    CANVAS_THEME_OPTIONS,
     DEFAULT_ZOOM_OPTIONS,
     TAG_OPTIONS,
     ANIMATION_SPEED_OPTIONS,
     TOAST_POSITION_OPTIONS,
     TOAST_DURATION_OPTIONS,
-    CHAT_PANEL_DEFAULT_OPTIONS,
     CHAT_RESPONSE_LENGTH_OPTIONS,
     ANALYTICS_RANGE_OPTIONS,
     HEATMAP_COLOR_OPTIONS,
@@ -40,6 +40,39 @@ const ACCENT_SWATCH = {
     orange: 'bg-orange-500',
     pink: 'bg-pink-500',
     teal: 'bg-teal-500',
+};
+
+// Inline-style previews for each canvas theme — a miniature of the editor canvas
+// so users can see the surface color and grid before selecting. These mirror the
+// real canvas styling in resources/css/flow-animations.css (kept in sync by eye).
+const CANVAS_THEME_PREVIEW = {
+    default: {
+        backgroundColor: '#0a0a0a',
+        backgroundImage: 'radial-gradient(rgba(255, 255, 255, 0.22) 1px, transparent 1px)',
+        backgroundSize: '8px 8px',
+    },
+    light: {
+        backgroundColor: '#f1f5f9',
+        backgroundImage: 'radial-gradient(rgba(15, 23, 42, 0.28) 1px, transparent 1px)',
+        backgroundSize: '8px 8px',
+    },
+    blueprint: {
+        backgroundColor: '#0d335e',
+        backgroundImage:
+            'linear-gradient(to right, rgba(147, 197, 253, 0.32) 1px, transparent 1px), linear-gradient(to bottom, rgba(147, 197, 253, 0.32) 1px, transparent 1px)',
+        backgroundSize: '9px 9px',
+    },
+    midnight: {
+        backgroundColor: '#050509',
+        backgroundImage: 'radial-gradient(rgba(168, 85, 247, 0.4) 1px, transparent 1px)',
+        backgroundSize: '8px 8px',
+    },
+    graph: {
+        backgroundColor: '#fbfdf6',
+        backgroundImage:
+            'linear-gradient(to right, rgba(34, 120, 80, 0.18) 1px, transparent 1px), linear-gradient(to bottom, rgba(34, 120, 80, 0.18) 1px, transparent 1px), linear-gradient(to right, rgba(34, 120, 80, 0.32) 1px, transparent 1px), linear-gradient(to bottom, rgba(34, 120, 80, 0.32) 1px, transparent 1px)',
+        backgroundSize: '6px 6px, 6px 6px, 30px 30px, 30px 30px',
+    },
 };
 
 // Solid swatch class per heatmap color scheme — for the Analytics color picker.
@@ -276,6 +309,52 @@ export default function Settings({ workflows = [] }) {
                                     orientation="vertical"
                                 />
                             </Row>
+
+                            {/* Canvas theme gets a full-width block (rather than Row's narrow
+                                right column) so each option can show a live preview thumbnail
+                                of the canvas surface and grid beside its label. */}
+                            <div>
+                                <Text className="text-sm font-medium text-gray-800 dark:text-gray-100">Canvas theme</Text>
+                                <Text className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                                    The color and grid style of the editor canvas. Applies instantly.
+                                </Text>
+                                <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                                    {CANVAS_THEME_OPTIONS.map((opt) => {
+                                        const selected = settings.canvasTheme === opt.value;
+                                        return (
+                                            <button
+                                                key={opt.value}
+                                                type="button"
+                                                onClick={() => update({ canvasTheme: opt.value })}
+                                                aria-pressed={selected}
+                                                title={opt.label}
+                                                className={`flex items-center gap-3 rounded-xl border p-2.5 text-left transition-all ${
+                                                    selected
+                                                        ? 'border-indigo-500 bg-indigo-50/60 ring-2 ring-indigo-500/30 dark:border-indigo-400 dark:bg-indigo-500/10'
+                                                        : 'border-gray-200 hover:border-gray-300 dark:border-gray-800 dark:hover:border-gray-700'
+                                                }`}
+                                            >
+                                                <span
+                                                    aria-hidden="true"
+                                                    style={CANVAS_THEME_PREVIEW[opt.value]}
+                                                    className="h-12 w-16 shrink-0 overflow-hidden rounded-lg border border-gray-300 shadow-inner dark:border-gray-700"
+                                                />
+                                                <span className="min-w-0 flex-1">
+                                                    <span className="flex items-center gap-1.5 text-sm font-medium text-gray-800 dark:text-gray-100">
+                                                        {opt.label}
+                                                        {selected && (
+                                                            <Check size={14} className="text-indigo-600 dark:text-indigo-400" aria-hidden="true" />
+                                                        )}
+                                                    </span>
+                                                    <span className="mt-0.5 block text-xs text-gray-500 dark:text-gray-400">
+                                                        {opt.description}
+                                                    </span>
+                                                </span>
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            </div>
 
                             <Row label="Default zoom level" hint="The zoom the canvas opens at.">
                                 <MultiSwitch

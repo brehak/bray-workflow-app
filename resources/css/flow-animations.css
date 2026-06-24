@@ -243,6 +243,82 @@
         linear-gradient(to bottom, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
 }
 
+/* ── Canvas color themes (Settings → Editor Preferences → Canvas Theme) ──────
+ * The editor box carries `data-canvas-theme`. `default` keeps the existing
+ * light/dark canvas untouched (the rules above own it). The rest repaint the
+ * `.ff-canvas` surface and recolor the grid so the canvas reads as a cohesive
+ * theme. They layer on top of `data-canvas-bg`: the surface color always
+ * applies, dot/line grids are recolored to match, and `data-canvas-bg='plain'`
+ * still hides every grid. Blueprint and Graph Paper are line-grid themes, so we
+ * hide the dot pattern and paint the grid on the pane for any background choice
+ * except 'plain'. */
+
+/* Light — white / light-gray canvas with a dot grid */
+.workflow-editor[data-canvas-theme='light'] .ff-canvas {
+    background: #f1f5f9;
+    border-color: #cbd5e1;
+}
+.workflow-editor[data-canvas-theme='light'] .react-flow__background-pattern.dots,
+.workflow-editor[data-canvas-theme='light'] .react-flow__background pattern circle {
+    fill: rgba(15, 23, 42, 0.14);
+}
+.workflow-editor[data-canvas-theme='light'][data-canvas-bg='lines'] .react-flow__pane {
+    background-image:
+        linear-gradient(to right, rgba(15, 23, 42, 0.07) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(15, 23, 42, 0.07) 1px, transparent 1px);
+}
+
+/* Blueprint — deep architect's blue with lighter blue grid lines */
+.workflow-editor[data-canvas-theme='blueprint'] .ff-canvas {
+    background: #0d335e;
+    border-color: #1c4d82;
+}
+.workflow-editor[data-canvas-theme='blueprint'] .react-flow__background {
+    display: none;
+}
+.workflow-editor[data-canvas-theme='blueprint']:not([data-canvas-bg='plain']) .react-flow__pane {
+    background-image:
+        linear-gradient(to right, rgba(147, 197, 253, 0.22) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(147, 197, 253, 0.22) 1px, transparent 1px);
+    background-size: 24px 24px;
+}
+
+/* Midnight — near-black canvas with a very subtle purple grid */
+.workflow-editor[data-canvas-theme='midnight'] .ff-canvas {
+    background: #050509;
+    border-color: #2a1f3d;
+}
+.workflow-editor[data-canvas-theme='midnight'] .react-flow__background-pattern.dots,
+.workflow-editor[data-canvas-theme='midnight'] .react-flow__background pattern circle {
+    fill: rgba(168, 85, 247, 0.22);
+}
+.workflow-editor[data-canvas-theme='midnight'][data-canvas-bg='lines'] .react-flow__pane {
+    background-image:
+        linear-gradient(to right, rgba(168, 85, 247, 0.12) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(168, 85, 247, 0.12) 1px, transparent 1px);
+}
+
+/* Graph Paper — light canvas with a fine, double-ruled green grid */
+.workflow-editor[data-canvas-theme='graph'] .ff-canvas {
+    background: #fbfdf6;
+    border-color: #c5d8c0;
+}
+.workflow-editor[data-canvas-theme='graph'] .react-flow__background {
+    display: none;
+}
+.workflow-editor[data-canvas-theme='graph']:not([data-canvas-bg='plain']) .react-flow__pane {
+    background-image:
+        linear-gradient(to right, rgba(34, 120, 80, 0.1) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(34, 120, 80, 0.1) 1px, transparent 1px),
+        linear-gradient(to right, rgba(34, 120, 80, 0.18) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(34, 120, 80, 0.18) 1px, transparent 1px);
+    background-size:
+        13px 13px,
+        13px 13px,
+        65px 65px,
+        65px 65px;
+}
+
 /* Soft inset vignette to give the canvas a sense of depth. A non-interactive
    overlay (`pointer-events: none`) so it never blocks nodes, controls, or
    drag/drop; the border-radius matches the canvas so it follows the rounded

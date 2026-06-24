@@ -382,7 +382,7 @@ function renderMessageContent(text, onSelect, disabled, forceMarkdown = false) {
             >
                 {items.map((item, i) => (
                     <motion.button
-                        key={i}
+                        key={`${item}-${i}`}
                         type="button"
                         disabled={disabled}
                         onClick={() => onSelect(item)}

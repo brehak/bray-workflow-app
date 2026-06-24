@@ -43,6 +43,23 @@ export const CANVAS_BG_OPTIONS = [
     { value: 'lines', label: 'Lines', description: 'A faint squared grid.' },
 ];
 
+// Canvas color themes — the surface color + grid styling of the editor canvas.
+// These layer on top of CANVAS_BG_OPTIONS (which still controls dots/plain/lines):
+// 'default' leaves the existing light/dark canvas untouched, the rest repaint the
+// surface and recolor the grid. Applied as `data-canvas-theme` on the editor box
+// and styled in resources/css/flow-animations.css.
+export const CANVAS_THEME_OPTIONS = [
+    { value: 'default', label: 'Default', description: 'The classic dark canvas with a dot grid.' },
+    { value: 'light', label: 'Light', description: 'A white / light-gray canvas with a dot grid.' },
+    {
+        value: 'blueprint',
+        label: 'Blueprint',
+        description: "Deep blue canvas with lighter blue grid lines, like an architect's blueprint.",
+    },
+    { value: 'midnight', label: 'Midnight', description: 'Deep black canvas with a very subtle purple grid.' },
+    { value: 'graph', label: 'Graph Paper', description: 'Light canvas with a fine grid like graph paper.' },
+];
+
 // Initial canvas zoom. Values are percentages (as strings) so the segmented
 // control renders "50%"… directly; `defaultZoomLevel()` converts to a scale.
 export const DEFAULT_ZOOM_OPTIONS = [
@@ -146,6 +163,7 @@ export const DEFAULT_SETTINGS = {
     accent: 'indigo',
     autoSaveInterval: '30', // seconds, or 'off'
     canvasBackground: 'dots',
+    canvasTheme: 'default', // 'default' | 'light' | 'blueprint' | 'midnight' | 'graph' — canvas color theme
     defaultZoom: '100', // initial canvas zoom as a percentage string ('50' | '75' | '100' | '125')
     showStepDescriptions: true, // show the description/subtitle under each node label on the canvas
     highlightActivePath: true, // green glow on successful node paths after a run completes

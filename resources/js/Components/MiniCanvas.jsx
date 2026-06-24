@@ -8,6 +8,7 @@
  * every node shares a coordinate (e.g. a perfectly horizontal flow), the span is
  * zero — we center that axis instead of dividing by zero.
  */
+import { memo } from 'react';
 import { motion } from 'framer-motion';
 
 // SVG coordinate space — the 200x80px area we scale node positions into. The
@@ -35,7 +36,7 @@ const project = (value, min, span, size) => {
     return PAD + t * (size - 2 * PAD);
 };
 
-export default function MiniCanvas({ nodes = [], edges = [], className = '' }) {
+function MiniCanvas({ nodes = [], edges = [], className = '' }) {
     const positioned = nodes.filter((n) => n?.position);
 
     // Nothing to draw — show a faint placeholder so the card still has a header.
@@ -108,3 +109,9 @@ export default function MiniCanvas({ nodes = [], edges = [], className = '' }) {
         </motion.div>
     );
 }
+
+// Memoized: one MiniCanvas renders per saved-workflow card, and the list
+// re-renders on search/pin/drag-hover state changes. The `nodes`/`edges` props
+// are stable references from the workflow records, so memo skips all the
+// projection math for cards that didn't change.
+export default memo(MiniCanvas);

@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ContentRenderer } from '@particle-academy/react-fancy';
 import { Terminal, ChevronDown, ChevronUp, X, Clock } from 'lucide-react';
@@ -25,7 +26,7 @@ const LEVEL_TEXT = {
     info: 'text-gray-100',
 };
 
-export default function RunFeedPanel({ feed, collapsed, onToggle, onClear }) {
+function RunFeedPanel({ feed = [], collapsed, onToggle, onClear }) {
     return (
         <div className="overflow-hidden rounded-xl border border-gray-800 bg-[#0a0a0a] text-gray-100 shadow-sm">
             <div className="flex items-center justify-between border-b border-gray-800 px-3 py-2">
@@ -128,3 +129,8 @@ export default function RunFeedPanel({ feed, collapsed, onToggle, onClear }) {
         </div>
     );
 }
+
+// Memoized so the feed (up to 300 rows, each AI row parsing markdown) doesn't
+// re-render on every parent render during a run. Effective only with stable
+// `onToggle`/`onClear` props — the call site passes useCallback'd handlers.
+export default memo(RunFeedPanel);

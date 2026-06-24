@@ -14,7 +14,7 @@ import {
     Plus,
     Star,
 } from 'lucide-react';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import GradientDivider from '../Components/GradientDivider';
 import Logo from '../Components/Logo';
 import MiniCanvas from '../Components/MiniCanvas';
@@ -24,6 +24,10 @@ import Tooltip from '../Components/Tooltip';
 import { getSettings } from '../lib/settings';
 import { getCustomFolders, addCustomFolder, removeCustomFolder } from '../lib/folders';
 import '../../css/card-glow.css';
+
+// Safe CSRF token read — returns '' rather than throwing if the meta tag is
+// absent (mirrors the helper in Workflow.jsx).
+const csrfToken = () => document.querySelector('meta[name="csrf-token"]')?.content ?? '';
 
 const templates = [
     {
@@ -135,9 +139,11 @@ export default function WorkflowList({ workflows }) {
         fetch(`/workflows/${id}`, {
             method: 'DELETE',
             headers: {
-                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
+                'X-CSRF-TOKEN': csrfToken(),
             },
-        }).then(() => router.reload());
+        })
+            .then(() => router.reload())
+            .catch(() => setStatus('Could not delete — please try again.'));
     };
 
     // Close the confirmation modal on Escape.
@@ -166,7 +172,7 @@ export default function WorkflowList({ workflows }) {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
+                'X-CSRF-TOKEN': csrfToken(),
             },
             body: JSON.stringify({
                 name: `Copy of ${workflow.name}`,
@@ -176,10 +182,12 @@ export default function WorkflowList({ workflows }) {
                 tags: workflow.tags ?? [],
                 folder: workflow.folder ?? null,
             }),
-        }).then(() => {
-            setStatus(`Duplicated “${workflow.name}”`);
-            router.reload();
-        });
+        })
+            .then(() => {
+                setStatus(`Duplicated “${workflow.name}”`);
+                router.reload();
+            })
+            .catch(() => setStatus('Could not duplicate — please try again.'));
     };
 
     // ── Pin / favorite ────────────────────────────────────────────────────────
@@ -197,7 +205,7 @@ export default function WorkflowList({ workflows }) {
             method: 'PATCH',
             headers: {
                 'Content-Type': 'application/json',
-                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
+                'X-CSRF-TOKEN': csrfToken(),
             },
             body: JSON.stringify({ pinned: next }),
         })
@@ -220,7 +228,7 @@ export default function WorkflowList({ workflows }) {
     // Tag filtering. `activeTag === null` means "All". Every tag used across the
     // saved workflows becomes a filter chip.
     const [activeTag, setActiveTag] = useState(() => initialParams.get('tag') || null);
-    const allTags = [...new Set(workflows.flatMap((w) => w.tags ?? []))].sort();
+    const allTags = useMemo(() => [...new Set(workflows.flatMap((w) => w.tags ?? []))].sort(), [workflows]);
     const toggleTag = (tag) => setActiveTag((cur) => (cur === tag ? null : tag));
 
     // Free-text search over the saved workflows — case-insensitive, matching
@@ -241,13 +249,17 @@ export default function WorkflowList({ workflows }) {
     const [activeFolder, setActiveFolder] = useState(() => initialParams.get('folder') || null);
     const [customFolders, setCustomFolders] = useState(() => getCustomFolders());
 
-    const folderNames = [
-        ...new Set([
-            ...workflows.map((w) => w.folder).filter(Boolean),
-            ...workflows.flatMap((w) => w.tags ?? []),
-            ...customFolders,
-        ]),
-    ].sort((a, b) => a.localeCompare(b));
+    const folderNames = useMemo(
+        () =>
+            [
+                ...new Set([
+                    ...workflows.map((w) => w.folder).filter(Boolean),
+                    ...workflows.flatMap((w) => w.tags ?? []),
+                    ...customFolders,
+                ]),
+            ].sort((a, b) => a.localeCompare(b)),
+        [workflows, customFolders],
+    );
     const folderCount = (name) => workflows.filter((w) => w.folder === name).length;
 
     // Inline "New Folder" creation in the sidebar.
@@ -276,17 +288,19 @@ export default function WorkflowList({ workflows }) {
             method: 'PUT',
             headers: {
                 'Content-Type': 'application/json',
-                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
+                'X-CSRF-TOKEN': csrfToken(),
             },
             body: JSON.stringify({ folder: folderName }),
-        }).then(() => {
-            setStatus(
-                folderName
-                    ? `Moved “${workflow.name}” to ${folderName}`
-                    : `Removed “${workflow.name}” from its folder`,
-            );
-            router.reload();
-        });
+        })
+            .then(() => {
+                setStatus(
+                    folderName
+                        ? `Moved “${workflow.name}” to ${folderName}`
+                        : `Removed “${workflow.name}” from its folder`,
+                );
+                router.reload();
+            })
+            .catch(() => setStatus('Could not move workflow — please try again.'));
     };
 
     const handleDropOnFolder = (folderName) => {
@@ -302,16 +316,32 @@ export default function WorkflowList({ workflows }) {
         if (activeFolder === name) setActiveFolder(null);
     };
 
-    const visibleWorkflows = workflows.filter(
-        (w) =>
-            (!activeTag || (w.tags ?? []).includes(activeTag)) &&
-            (!activeFolder || w.folder === activeFolder) &&
-            matchesQuery(w),
+    // Memoized so the search box, drag-hover state, and pin toggles don't re-run
+    // these filters over the full list on every render.
+    const visibleWorkflows = useMemo(
+        () =>
+            workflows.filter(
+                (w) =>
+                    (!activeTag || (w.tags ?? []).includes(activeTag)) &&
+                    (!activeFolder || w.folder === activeFolder) &&
+                    matchesQuery(w),
+            ),
+        // matchesQuery only depends on `q`; listing it keeps the filter in sync.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [workflows, activeTag, activeFolder, q],
     );
 
     // Pinned workflows float to the top in their own section; the rest follow.
-    const pinnedWorkflows = visibleWorkflows.filter(isPinned);
-    const otherWorkflows = visibleWorkflows.filter((w) => !isPinned(w));
+    const pinnedWorkflows = useMemo(
+        () => visibleWorkflows.filter(isPinned),
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [visibleWorkflows, pinnedOverrides],
+    );
+    const otherWorkflows = useMemo(
+        () => visibleWorkflows.filter((w) => !isPinned(w)),
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [visibleWorkflows, pinnedOverrides],
+    );
 
     // Renders a single saved-workflow card. Shared between the Pinned section and
     // the main grid so both stay in sync.
@@ -381,8 +411,8 @@ export default function WorkflowList({ workflows }) {
                 </Text>
                 {(workflow.tags?.length ?? 0) > 0 && (
                     <div className="mt-3 flex flex-wrap gap-1.5">
-                        {workflow.tags.map((tag) => (
-                            <Badge key={tag} variant="soft" size="sm" color="blue">
+                        {workflow.tags.map((tag, i) => (
+                            <Badge key={`${tag}-${i}`} variant="soft" size="sm" color="blue">
                                 {tag}
                             </Badge>
                         ))}
@@ -785,13 +815,13 @@ export default function WorkflowList({ workflows }) {
                                     </div>
                                 ) : (
                                     <div className="flex flex-col items-center justify-center py-12 text-center rounded-xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900">
-                                        <Text className="text-gray-500">
+                                        <Text className="text-gray-500 dark:text-gray-300">
                                             {activeFolder
                                                 ? `No workflows in “${activeFolder}” yet.`
                                                 : `No workflows tagged “${activeTag}”.`}
                                         </Text>
                                         {activeFolder && (
-                                            <Text className="mt-1 text-sm text-gray-400">
+                                            <Text className="mt-1 text-sm text-gray-400 dark:text-gray-500">
                                                 Drag a workflow card onto this folder to file one here.
                                             </Text>
                                         )}

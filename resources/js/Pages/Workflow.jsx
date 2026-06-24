@@ -48,7 +48,7 @@ import ThemeToggle from '../Components/ThemeToggle';
 import Tooltip from '../Components/Tooltip';
 import { applyFriendlyNodeLabels } from '../lib/friendlyPalette';
 import { registerNoteKind, makeNoteNode } from '../lib/noteNode';
-import { getSettings, autoSaveIntervalMs, animationSpeedFactor, toastDurationMs, defaultZoomLevel } from '../lib/settings';
+import { getSettings, autoSaveIntervalMs, animationSpeedFactor, toastDurationMs, defaultZoomLevel, SETTINGS_EVENT } from '../lib/settings';
 import { incrementRunsCompleted } from '../lib/runs';
 import { getCustomFolders, addCustomFolder } from '../lib/folders';
 import '../../css/flow-animations.css';
@@ -2269,6 +2269,10 @@ function WorkflowEditor() {
     // Start expanded only when "Run feed auto-expand" is on; otherwise it stays
     // collapsed until the user opens it (or, with auto-expand on, a run starts).
     const [feedCollapsed, setFeedCollapsed] = useState(() => !getSettings().runFeedAutoExpand);
+    // Stable handlers so the memoized RunFeedPanel doesn't re-render every time
+    // the editor does (setState setters are stable, so these never change).
+    const toggleFeed = useCallback(() => setFeedCollapsed((c) => !c), []);
+    const clearFeed = useCallback(() => setFeed([]), []);
     const feedIdRef = useRef(0);
     const appendFeed = useCallback((partial) => {
         setFeed((f) => {
@@ -2418,6 +2422,21 @@ function WorkflowEditor() {
     const userSettings = useMemo(() => getSettings(), []);
     const blankAccent = SETTINGS_ACCENT_THEMES[userSettings.accent] || neutralAccent;
     const accent = (effectiveType && accentThemes[effectiveType]) || blankAccent;
+
+    // Canvas color theme — kept in its own reactive state (rather than the
+    // read-once `userSettings`) so changing it on the Settings page applies to an
+    // open editor immediately, without a reload. We sync on the same-tab settings
+    // event and the cross-tab `storage` event.
+    const [canvasTheme, setCanvasTheme] = useState(() => getSettings().canvasTheme);
+    useEffect(() => {
+        const sync = () => setCanvasTheme(getSettings().canvasTheme);
+        window.addEventListener(SETTINGS_EVENT, sync);
+        window.addEventListener('storage', sync);
+        return () => {
+            window.removeEventListener(SETTINGS_EVENT, sync);
+            window.removeEventListener('storage', sync);
+        };
+    }, []);
 
     // Apply the "Animation speed" preference to the module-level run pacing.
     useEffect(() => {
@@ -2598,6 +2617,14 @@ function WorkflowEditor() {
                 setIsInitialLoad(true);
                 setStatus('Loaded from database');
                 setReady(true);
+            })
+            .catch(() => {
+                // Deleted record, network error, or bad JSON — don't leave the
+                // editor stuck on the loading placeholder. Surface it and fall
+                // back to an empty, usable canvas.
+                if (ignore) return;
+                setStatus('Could not load this workflow — starting a blank canvas.');
+                setReady(true);
             });
         return () => {
             ignore = true;
@@ -2607,7 +2634,7 @@ function WorkflowEditor() {
     // The node the user has selected on the canvas. In controlled mode React Flow
     // marks the clicked node with `selected: true` and routes that through
     // `onChange`, so we can read the selection straight off `graph`.
-    const selectedNode = graph.nodes.find((n) => n.selected) ?? null;
+    const selectedNode = useMemo(() => graph.nodes.find((n) => n.selected) ?? null, [graph.nodes]);
 
     // ── Undo / redo history ─────────────────────────────────────────────────
     // fancy-flow has no undo API, so we keep our own. The editor is controlled,
@@ -3206,7 +3233,7 @@ function WorkflowEditor() {
             const res = await fetch(`/workflows/${id}/export/bpmn`, {
                 method: 'POST',
                 headers: {
-                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
+                    'X-CSRF-TOKEN': csrfToken(),
                 },
             });
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -3270,7 +3297,13 @@ function WorkflowEditor() {
     };
 
     // Fingerprint of the current content + whether it differs from the last save.
-    const currentSig = workflowFingerprint(name, description, tags, folder, graph.nodes, graph.edges);
+    // Memoized because it serializes the whole graph (JSON.stringify of every node
+    // + edge), and this component re-renders on every keystroke, drag tick, and run
+    // state change — recomputing only when the persisted fields actually change.
+    const currentSig = useMemo(
+        () => workflowFingerprint(name, description, tags, folder, graph.nodes, graph.edges),
+        [name, description, tags, folder, graph.nodes, graph.edges],
+    );
     // Until the user's first manual edit (isInitialLoad), a freshly loaded
     // template or saved workflow is never considered "unsaved" — this is what
     // keeps the auto-save, the header indicator, and the navigation guard dormant
@@ -3366,7 +3399,7 @@ function WorkflowEditor() {
                 method,
                 headers: {
                     'Content-Type': 'application/json',
-                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
+                    'X-CSRF-TOKEN': csrfToken(),
                 },
                 body: JSON.stringify(payload),
             });
@@ -3867,6 +3900,7 @@ function WorkflowEditor() {
                     <div
                         ref={editorBoxRef}
                         data-canvas-bg={userSettings.canvasBackground}
+                        data-canvas-theme={canvasTheme}
                         data-anim-speed={userSettings.animationSpeed}
                         data-show-desc={String(userSettings.showStepDescriptions)}
                         data-highlight-path={String(userSettings.highlightActivePath)}
@@ -4064,8 +4098,8 @@ function WorkflowEditor() {
                     <RunFeedPanel
                         feed={feed}
                         collapsed={feedCollapsed}
-                        onToggle={() => setFeedCollapsed((c) => !c)}
-                        onClear={() => setFeed([])}
+                        onToggle={toggleFeed}
+                        onClear={clearFeed}
                     />
                     </div>
 
