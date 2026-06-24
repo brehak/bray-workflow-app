@@ -160,3 +160,38 @@
 .dark .workflow-editor ::-webkit-scrollbar-thumb:hover {
     background-color: theme(colors.gray.400);
 }
+
+/* ---------------------------------------------------------------------------
+   Analytics "Export as PDF" print styling
+   ---------------------------------------------------------------------------
+   The Analytics page's Export PDF button calls window.print(). Per-element
+   hide/show is handled with Tailwind's `print:` utilities in the JSX; this block
+   covers what utilities can't — page setup, forcing themed backgrounds and
+   gradients to actually ink, keeping cards from splitting across a page break,
+   and a report footer repeated at the bottom of every printed page. */
+@media print {
+    *,
+    *::before,
+    *::after {
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+    }
+
+    @page {
+        margin: 14mm 12mm;
+    }
+
+    /* Keep a stat/chart card whole rather than slicing it across pages. */
+    .print-card {
+        break-inside: avoid;
+        page-break-inside: avoid;
+    }
+
+    /* Report footer pinned to the bottom of every printed page. */
+    .print-footer {
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+    }
+}

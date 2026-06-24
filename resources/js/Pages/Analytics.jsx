@@ -15,7 +15,7 @@ import {
     CanvasRenderer,
 } from '@particle-academy/fancy-echarts';
 import { motion, AnimatePresence, LayoutGroup } from 'framer-motion';
-import { Settings, BarChart3, Layers, Tag as TagIcon, TrendingUp, Zap, Tags, GitBranch, Clock, Split, CalendarDays, Plus, LayoutTemplate, Download, Activity, ChevronRight, ChevronDown, ArrowUpDown, Check, AlertTriangle } from 'lucide-react';
+import { Settings, BarChart3, Layers, Tag as TagIcon, TrendingUp, Zap, Tags, GitBranch, Clock, Split, CalendarDays, Plus, LayoutTemplate, Download, FileText, Activity, ChevronRight, ChevronDown, ArrowUpDown, Check, AlertTriangle } from 'lucide-react';
 import { useMemo, useState, useEffect } from 'react';
 import GradientDivider from '../Components/GradientDivider';
 import Logo from '../Components/Logo';
@@ -239,7 +239,7 @@ function ChartCard({ title, icon: Icon, children, className = '', action }) {
     return (
         <motion.section
             variants={fadeUp}
-            className={`rounded-xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-900 ${className}`}
+            className={`print-card rounded-xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-900 ${className}`}
         >
             <div className="mb-4 flex items-center justify-between gap-3">
                 <div className="flex items-center gap-2.5">
@@ -271,7 +271,7 @@ function StatCard({ title, icon: Icon, value, sub, numeric = false, children }) 
     return (
         <motion.div
             variants={fadeUp}
-            className="flex flex-col rounded-xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-gray-900"
+            className="print-card flex flex-col rounded-xl border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-gray-900"
         >
             <div className="flex items-center gap-2.5">
                 <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600 dark:bg-indigo-500/15 dark:text-indigo-400">
@@ -485,6 +485,29 @@ export default function Analytics({ workflows }) {
         }
     };
 
+    // Export the dashboard as a PDF via the browser's print-to-PDF. A
+    // print-specific stylesheet (see app.css `@media print` + `print:` utilities
+    // below) strips the nav/buttons and adds a report header/footer so the output
+    // reads as a clean report rather than a raw page dump. We flip `printing` on
+    // first so the button shows a "Generating PDF…" state, let React paint it,
+    // then open the print dialog (window.print blocks until it's dismissed).
+    const [printing, setPrinting] = useState(false);
+    const reportDate = useMemo(
+        () => new Date().toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' }),
+        [],
+    );
+    const exportPdf = () => {
+        if (printing) return;
+        setPrinting(true);
+        setTimeout(() => {
+            try {
+                window.print();
+            } finally {
+                setPrinting(false);
+            }
+        }, 350);
+    };
+
     // Completed-run count lives in localStorage (no runs table yet). It has no
     // per-run timestamps, so it's an all-time figure regardless of the filter.
     const [runs, setRuns] = useState(0);
@@ -683,7 +706,7 @@ export default function Analytics({ workflows }) {
 
             <div className="flex min-h-screen flex-col bg-gray-50 bg-[radial-gradient(ellipse_80%_50%_at_50%_-10%,rgba(59,130,246,0.08),transparent_70%)] transition-colors duration-300 dark:bg-gray-950 dark:bg-[radial-gradient(ellipse_80%_50%_at_50%_-10%,rgba(99,102,241,0.15),transparent_70%)]">
                 {/* Glassmorphism header — mirrors WorkflowList for visual continuity. */}
-                <header className="sticky top-0 z-50 border-b border-gray-200/60 bg-white/70 px-6 py-4 backdrop-blur-md transition-colors duration-300 dark:border-gray-800/60 dark:bg-gray-900/70">
+                <header className="sticky top-0 z-50 border-b border-gray-200/60 bg-white/70 px-6 py-4 backdrop-blur-md transition-colors duration-300 dark:border-gray-800/60 dark:bg-gray-900/70 print:hidden">
                     <div className="mx-auto flex max-w-5xl items-center justify-between">
                         <div className="flex items-center gap-2.5">
                             <Logo className="text-indigo-600 dark:text-indigo-400" />
@@ -713,15 +736,33 @@ export default function Analytics({ workflows }) {
                     </div>
                 </header>
 
-                <GradientDivider />
+                <div className="print:hidden">
+                    <GradientDivider />
+                </div>
 
                 <main className="mx-auto w-full max-w-5xl flex-1 p-6">
+                    {/* Print-only report header — app name + current date at the top
+                        of the exported PDF. Hidden on screen, shown only when the
+                        browser is printing (see `exportPdf` / @media print). */}
+                    <div className="mb-6 hidden border-b border-gray-300 pb-4 print:block">
+                        <div className="flex items-center gap-2.5">
+                            <Logo className="text-indigo-600" />
+                            <Heading as="h1" size="2xl" weight="bold">
+                                Fancy Workflows — Analytics Report
+                            </Heading>
+                        </div>
+                        <Text className="mt-1.5 text-sm text-gray-600">
+                            Generated {reportDate} · {activeRange.days ? `Last ${activeRange.days} days` : 'All time'} ·{' '}
+                            {filtered.length} of {workflows.length} {workflows.length === 1 ? 'workflow' : 'workflows'}
+                        </Text>
+                    </div>
+
                     {/* Quick actions bar. */}
                     <motion.div
                         initial={{ opacity: 0, y: -8 }}
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ duration: 0.4, ease: 'easeOut' }}
-                        className="mb-6 flex flex-wrap items-center gap-3"
+                        className="mb-6 flex flex-wrap items-center gap-3 print:hidden"
                     >
                         <Link href="/workflow">
                             <motion.div className="inline-flex" whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}>
@@ -775,14 +816,29 @@ export default function Analytics({ workflows }) {
                                 initial={{ opacity: 0, y: -8 }}
                                 animate={{ opacity: 1, y: 0 }}
                                 transition={{ duration: 0.4, ease: 'easeOut' }}
-                                className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
+                                className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between print:hidden"
                             >
                                 <Text className="text-sm text-gray-500 dark:text-gray-400">
                                     Showing <span className="font-semibold text-gray-700 dark:text-gray-200">{filtered.length}</span> of{' '}
                                     {workflows.length} {workflows.length === 1 ? 'workflow' : 'workflows'}
                                     {activeRange.days ? ` from the last ${activeRange.days} days` : ' (all time)'}
                                 </Text>
-                                <RangeFilter value={range} onChange={setRange} />
+                                <div className="flex flex-wrap items-center gap-3">
+                                    <RangeFilter value={range} onChange={setRange} />
+                                    <motion.div className="inline-flex" whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}>
+                                        <Button
+                                            variant="outline"
+                                            className="rounded-full"
+                                            onClick={exportPdf}
+                                            disabled={printing}
+                                            aria-busy={printing}
+                                        >
+                                            <span className="inline-flex items-center gap-2">
+                                                <FileText size={16} aria-hidden="true" /> {printing ? 'Generating PDF…' : 'Export PDF'}
+                                            </span>
+                                        </Button>
+                                    </motion.div>
+                                </div>
                             </motion.div>
 
                             {/* Filtered stats + charts. Keyed on the range so switching
@@ -799,7 +855,7 @@ export default function Analytics({ workflows }) {
                                     {/* Big-number stat card. */}
                                     <motion.section
                                         variants={fadeUp}
-                                        className="relative overflow-hidden rounded-xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-900 lg:col-span-2"
+                                        className="print-card relative overflow-hidden rounded-xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-900 lg:col-span-2"
                                     >
                                         <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-blue-500 via-indigo-500 to-purple-500" />
                                         <div className="flex items-center gap-2.5">
@@ -943,7 +999,7 @@ export default function Analytics({ workflows }) {
                                 initial={{ opacity: 0, y: 24 }}
                                 animate={{ opacity: 1, y: 0 }}
                                 transition={{ duration: 0.5, ease: 'easeOut', delay: 0.1 }}
-                                className="mt-5 rounded-xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-900"
+                                className="print-card mt-5 rounded-xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-900"
                             >
                                 <div className="mb-4 flex items-center justify-between gap-3">
                                     <div className="flex items-center gap-2.5">
@@ -977,7 +1033,7 @@ export default function Analytics({ workflows }) {
                                 initial={{ opacity: 0, y: 24 }}
                                 animate={{ opacity: 1, y: 0 }}
                                 transition={{ duration: 0.5, ease: 'easeOut', delay: 0.15 }}
-                                className="mt-5 rounded-xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-900"
+                                className="print-card mt-5 rounded-xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-800 dark:bg-gray-900"
                             >
                                 <div className="mb-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
                                     <div className="flex items-center gap-2.5">
@@ -1042,6 +1098,12 @@ export default function Analytics({ workflows }) {
                         </>
                     )}
                 </main>
+
+                {/* Print-only report footer — pinned to the bottom of every printed
+                    page by `.print-footer` (see app.css @media print). */}
+                <div className="print-footer hidden pt-3 text-center text-xs text-gray-500 print:block">
+                    Generated by Fancy Workflows
+                </div>
             </div>
 
             {/* Transient export status toast. */}
