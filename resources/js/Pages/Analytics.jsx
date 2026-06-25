@@ -1,22 +1,9 @@
 import { Head, Link, router } from '@inertiajs/react';
 import { Button, Heading, Text } from '@particle-academy/react-fancy';
-import {
-    EChart,
-    registerCharts,
-    PieChart,
-    BarChart,
-    LineChart,
-    HeatmapChart,
-    GridComponent,
-    TooltipComponent,
-    LegendComponent,
-    CalendarComponent,
-    VisualMapComponent,
-    CanvasRenderer,
-} from '@particle-academy/fancy-echarts';
 import { motion, AnimatePresence, LayoutGroup } from 'framer-motion';
 import { Settings, BarChart3, Layers, Tag as TagIcon, TrendingUp, Zap, Tags, GitBranch, Clock, Split, CalendarDays, Plus, LayoutTemplate, Download, FileText, Activity, ChevronRight, ChevronDown, ArrowUpDown, Check, AlertTriangle } from 'lucide-react';
 import { useMemo, useState, useEffect } from 'react';
+import EChartLazy from '../Components/EChartLazy';
 import GradientDivider from '../Components/GradientDivider';
 import Logo from '../Components/Logo';
 import NavButton from '../Components/NavButton';
@@ -25,22 +12,6 @@ import { useTheme } from '../hooks/useTheme';
 import { getRunsCompleted } from '../lib/runs';
 import { getSettings } from '../lib/settings';
 import { createZip, slugify } from '../lib/zip';
-
-// Register only the chart types this page renders (pie, bar, line, calendar
-// heatmap) plus the components they need — tree-shaking the rest of ECharts out
-// of the bundle. Safe at module scope: registration is idempotent.
-registerCharts([
-    PieChart,
-    BarChart,
-    LineChart,
-    HeatmapChart,
-    GridComponent,
-    TooltipComponent,
-    LegendComponent,
-    CalendarComponent,
-    VisualMapComponent,
-    CanvasRenderer,
-]);
 
 // Shared palette — pulled from the app's blue → indigo → purple gradient family
 // so the charts feel of-a-piece with the rest of Fancy Workflows.
@@ -775,7 +746,7 @@ export default function Analytics({ workflows }) {
                         </Link>
                         <Link href="/workflows-list">
                             <motion.div className="inline-flex" whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}>
-                                <Button variant="outline" className="rounded-full">
+                                <Button variant="outline" color="gray" className="rounded-full">
                                     <span className="inline-flex items-center gap-2">
                                         <LayoutTemplate size={16} aria-hidden="true" /> Browse Templates
                                     </span>
@@ -783,7 +754,7 @@ export default function Analytics({ workflows }) {
                             </motion.div>
                         </Link>
                         <motion.div className="inline-flex" whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}>
-                            <Button variant="outline" className="rounded-full" onClick={exportAll} disabled={exporting || !hasData}>
+                            <Button variant="outline" color="gray" className="rounded-full" onClick={exportAll} disabled={exporting || !hasData}>
                                 <span className="inline-flex items-center gap-2">
                                     <Download size={16} aria-hidden="true" /> {exporting ? 'Exporting…' : 'Export All'}
                                 </span>
@@ -828,6 +799,7 @@ export default function Analytics({ workflows }) {
                                     <motion.div className="inline-flex" whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}>
                                         <Button
                                             variant="outline"
+                                            color="gray"
                                             className="rounded-full"
                                             onClick={exportPdf}
                                             disabled={printing}
@@ -941,7 +913,7 @@ export default function Analytics({ workflows }) {
                                         <ChartCard title="Workflows by template type" icon={Layers}>
                                             {byTemplate.length > 0 ? (
                                                 <>
-                                                    <EChart
+                                                    <EChartLazy
                                                         option={templateOption}
                                                         theme={chartTheme}
                                                         style={{ height: 320 }}
@@ -963,7 +935,7 @@ export default function Analytics({ workflows }) {
                                         <ChartCard title="Workflows by tag" icon={TagIcon}>
                                             {byTag.length > 0 ? (
                                                 <>
-                                                    <EChart
+                                                    <EChartLazy
                                                         option={tagOption}
                                                         theme={chartTheme}
                                                         style={{ height: 320 }}
@@ -983,7 +955,7 @@ export default function Analytics({ workflows }) {
                                     {settings.showChart_workflowsOverTime && (
                                         <ChartCard title="Workflows created over time" icon={TrendingUp} className="lg:col-span-2">
                                             {overTime.length > 0 ? (
-                                                <EChart option={overTimeOption} theme={chartTheme} style={{ height: 320 }} />
+                                                <EChartLazy option={overTimeOption} theme={chartTheme} style={{ height: 320 }} />
                                             ) : (
                                                 <EmptyChart message="No workflows created in this range." />
                                             )}
@@ -1014,7 +986,7 @@ export default function Analytics({ workflows }) {
                                 </div>
                                 <div className="overflow-x-auto">
                                     <div className="min-w-[640px]">
-                                        <EChart
+                                        <EChartLazy
                                             option={heatmapOption}
                                             theme={chartTheme}
                                             style={{ height: 180 }}

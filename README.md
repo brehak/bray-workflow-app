@@ -43,6 +43,17 @@ Under the hood it's a modern **Laravel + Inertia + React** single-page app: Lara
 - 🌗 **Dark & light mode** — a theme that follows your system preference or your choice.
 - ⌨️ **Keyboard shortcuts** — move fast with shortcuts for the actions you reach for most.
 - 🎓 **Guided onboarding** — a step-by-step beginner guide gets newcomers building in minutes.
+- 🤖 **Claude AI chat assistant** — a built-in assistant with 17 slash commands to build, edit and explain your workflows.
+- 🧠 **Agentic nodes** — nodes that reason and act, powered by Prism PHP + Claude AI.
+- 🔄 **BPMN 2.0 export** — export any workflow to the standard BPMN 2.0 XML format.
+- 🩺 **Workflow health score** — run `/score` to grade a workflow and surface issues before you ship it.
+- 💡 **Smart node suggestions** — context-aware next-step recommendations as you build.
+- 📁 **Folders & pinning** — organize workflows into folders and pin the ones you reach for most.
+- 📊 **Analytics dashboard** — visualize run metrics, with one-click PDF report export.
+- ⏱️ **Node performance stats** — per-node execution timing surfaced in your run history.
+- 🖼️ **Canvas themes** — switch the editor canvas between visual themes.
+- ✨ **Auto-name workflows** — generate a fitting workflow name automatically.
+- 📝 **Rich markdown rendering** — node descriptions render as styled prose via `ContentRenderer`.
 
 ---
 
@@ -53,11 +64,17 @@ Under the hood it's a modern **Laravel + Inertia + React** single-page app: Lara
 | [Laravel](https://laravel.com) | `^13.8` | Back-end framework — routing, persistence, page rendering |
 | [PHP](https://www.php.net) | `^8.3` | Server-side language |
 | [Inertia.js (Laravel)](https://inertiajs.com) | `^3.1` | Server-side adapter bridging Laravel and React |
+| [Prism PHP](https://prismphp.com) | `^0.100` | LLM toolkit powering the Claude AI assistant and agentic nodes |
+| [fancy-seo](https://ui.particle.academy) | `*` | Particle Academy SEO meta-tag management (Laravel) |
 | [Laravel Tinker](https://github.com/laravel/tinker) | `^3.0` | REPL for the application |
 | [React](https://react.dev) | `^19.2` | Front-end UI library |
 | [Inertia.js (React)](https://inertiajs.com) | `^3.3` | Client-side adapter — SPA navigation without an API |
 | [react-fancy](https://ui.particle.academy) | `^4.4` | Particle Academy UI component library |
 | [fancy-flow](https://ui.particle.academy) | `^0.5` | Particle Academy node-based workflow canvas |
+| [fancy-echarts](https://ui.particle.academy) | `^4.0` | ECharts-powered charts for the analytics dashboard |
+| [fancy-inertia](https://ui.particle.academy) | `^0.9` | Particle Academy Inertia.js integration helpers |
+| [fancy-app-update](https://ui.particle.academy) | `^0.1` | In-app update notifications |
+| [echarts](https://echarts.apache.org) | `^5.6` | Charting engine behind the analytics dashboard |
 | [Framer Motion](https://www.framer.com/motion/) | `^12.40` | Animations and transitions |
 | [Tailwind CSS](https://tailwindcss.com) | `^4.0` | Utility-first styling |
 | [Lucide React](https://lucide.dev) | `^1.17` | Icon set |
@@ -148,6 +165,10 @@ Fancy Workflows is a showcase for **[Fancy UI](https://ui.particle.academy) by [
 
 - **[`react-fancy`](https://ui.particle.academy)** — the component library powering every button, heading, badge, input and switch in the app.
 - **[`fancy-flow`](https://ui.particle.academy)** — the node-based canvas that powers the visual workflow editor.
+- **[`fancy-echarts`](https://ui.particle.academy)** — the charting components behind the analytics dashboard.
+- **[`fancy-inertia`](https://ui.particle.academy)** — Inertia.js integration helpers for Fancy UI.
+- **[`fancy-app-update`](https://ui.particle.academy)** — in-app update notifications.
+- **[`fancy-seo`](https://ui.particle.academy)** — SEO meta-tag management on the Laravel side.
 
 If you like what you see here, explore the full toolkit at **[ui.particle.academy](https://ui.particle.academy)**.
 

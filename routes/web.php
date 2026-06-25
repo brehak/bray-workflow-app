@@ -46,7 +46,14 @@ Route::apiResource('workflows', WorkflowController::class);
 
 // Agentic AI node executor — reasons through a single workflow step via Prism/Claude.
 Route::get('/api/agent/status', [AgentNodeController::class, 'status']);
-Route::post('/api/agent/node', [AgentNodeController::class, 'run']);
 
-// Claude workflow chat assistant — answers questions and proposes graph edits.
-Route::post('/api/workflow/chat', [WorkflowChatController::class, 'chat']);
+// The two endpoints below call the Anthropic API on every request, so they're
+// rate-limited to 30 requests/minute per IP to protect against cost abuse and
+// using the app as a free LLM proxy. Tune the limit in RouteServiceProvider's
+// 'ai' limiter if needed.
+Route::middleware('throttle:ai')->group(function () {
+    Route::post('/api/agent/node', [AgentNodeController::class, 'run']);
+
+    // Claude workflow chat assistant — answers questions and proposes graph edits.
+    Route::post('/api/workflow/chat', [WorkflowChatController::class, 'chat']);
+});

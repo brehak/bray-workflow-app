@@ -14,7 +14,7 @@ import {
     Plus,
     Star,
 } from 'lucide-react';
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback, memo, forwardRef } from 'react';
 import GradientDivider from '../Components/GradientDivider';
 import Logo from '../Components/Logo';
 import MiniCanvas from '../Components/MiniCanvas';
@@ -125,6 +125,118 @@ const templates = [
     },
 ];
 
+// A single saved-workflow card, extracted to a module-level memoized component
+// so it only re-renders when ITS OWN props change. Everything it needs is passed
+// in — including stable (useCallback) handlers and per-card booleans (`pinned`,
+// `isDragging`) rather than the parent's global state — so typing in the search
+// box or dragging one card no longer re-renders all the others (and their
+// MiniCanvas previews). forwardRef is required because the lists wrap cards in
+// <AnimatePresence mode="popLayout">, which needs a ref to each child's DOM node.
+const WorkflowCard = memo(
+    forwardRef(function WorkflowCard(
+        { workflow, pinned, isDragging, showStepCounts, onDragStart, onDragEnd, onPin, onDuplicate, onDelete },
+        ref,
+    ) {
+        return (
+            <motion.div
+                ref={ref}
+                layout
+                draggable
+                onDragStart={() => onDragStart(workflow)}
+                onDragEnd={onDragEnd}
+                initial={{ opacity: 0, scale: 0.92 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.92 }}
+                transition={{ duration: 0.2, ease: 'easeOut' }}
+                className={`relative cursor-grab rounded-xl border border-gray-200 bg-white p-6 shadow-sm transition-opacity active:cursor-grabbing dark:border-gray-800 dark:bg-gray-900 ${
+                    isDragging ? 'opacity-50' : ''
+                }`}
+            >
+                {/* Pin / favorite toggle */}
+                <Tooltip label={pinned ? 'Unpin workflow' : 'Pin to top'}>
+                    <motion.button
+                        type="button"
+                        onClick={() => onPin(workflow, pinned)}
+                        draggable={false}
+                        aria-label={pinned ? `Unpin ${workflow.name}` : `Pin ${workflow.name}`}
+                        aria-pressed={pinned}
+                        whileHover={{ scale: 1.12 }}
+                        whileTap={{ scale: 0.8 }}
+                        className={`absolute right-3 top-3 z-10 inline-flex h-8 w-8 items-center justify-center rounded-full border transition-colors ${
+                            pinned
+                                ? 'border-amber-300 bg-amber-50 text-amber-500 dark:border-amber-500/40 dark:bg-amber-500/15 dark:text-amber-400'
+                                : 'border-gray-200 bg-white text-gray-400 hover:bg-gray-50 hover:text-gray-600 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-500 dark:hover:bg-gray-800 dark:hover:text-gray-300'
+                        }`}
+                    >
+                        <motion.span
+                            key={pinned ? 'on' : 'off'}
+                            initial={{ rotate: -30, scale: 0.4, opacity: 0 }}
+                            animate={{ rotate: 0, scale: 1, opacity: 1 }}
+                            transition={{ type: 'spring', stiffness: 400, damping: 14 }}
+                            className="inline-flex"
+                        >
+                            <Star size={16} fill={pinned ? 'currentColor' : 'none'} aria-hidden="true" />
+                        </motion.span>
+                    </motion.button>
+                </Tooltip>
+
+                {/* Mini graph preview — simplified dots + lines, not the editor. */}
+                <MiniCanvas nodes={workflow.nodes} edges={workflow.edges} className="mb-4" />
+                <Heading as="h3" size="lg" weight="semibold" className="pr-9">
+                    {workflow.name}
+                </Heading>
+                {workflow.description && (
+                    <Text className="mt-1 text-sm text-gray-500">{workflow.description}</Text>
+                )}
+                {showStepCounts && (
+                    <Text className="mt-2 text-xs text-gray-400">
+                        {workflow.nodes.length} steps · {workflow.edges.length} connections
+                    </Text>
+                )}
+                <Text className="mt-1 text-xs text-gray-400">
+                    Saved {new Date(workflow.created_at).toLocaleDateString()}
+                </Text>
+                {(workflow.tags?.length ?? 0) > 0 && (
+                    <div className="mt-3 flex flex-wrap gap-1.5">
+                        {workflow.tags.map((tag, i) => (
+                            <Badge key={`${tag}-${i}`} variant="soft" size="sm" color="blue">
+                                {tag}
+                            </Badge>
+                        ))}
+                    </div>
+                )}
+                {workflow.folder && (
+                    <div className="mt-3">
+                        <Badge variant="soft" size="sm" color="indigo">
+                            <span className="inline-flex items-center gap-1">
+                                <Folder size={11} aria-hidden="true" />
+                                {workflow.folder}
+                            </span>
+                        </Badge>
+                    </div>
+                )}
+                <div className="mt-4 flex gap-2">
+                    <Tooltip label="Open this workflow in the editor">
+                        <Link href={`/workflow?id=${workflow.id}`} draggable={false}>
+                            <Button variant="primary" size="sm">Load</Button>
+                        </Link>
+                    </Tooltip>
+                    <Tooltip label="Save a copy of this workflow">
+                        <Button variant="outline" color="gray" size="sm" onClick={() => onDuplicate(workflow)}>
+                            Duplicate
+                        </Button>
+                    </Tooltip>
+                    <Tooltip label="Delete this workflow">
+                        <Button variant="outline" color="gray" size="sm" onClick={() => onDelete(workflow)}>
+                            Delete
+                        </Button>
+                    </Tooltip>
+                </div>
+            </motion.div>
+        );
+    }),
+);
+
 export default function WorkflowList({ workflows }) {
     // Display preference (read from localStorage on mount): whether cards show
     // the "X steps · Y connections" line.
@@ -142,7 +254,13 @@ export default function WorkflowList({ workflows }) {
                 'X-CSRF-TOKEN': csrfToken(),
             },
         })
-            .then(() => router.reload())
+            .then((res) => {
+                // fetch only rejects on network errors, so a 4xx/5xx would
+                // otherwise reload and make the row silently reappear with no
+                // explanation. Treat a non-2xx as a failure.
+                if (!res.ok) throw new Error('Failed to delete');
+                router.reload();
+            })
             .catch(() => setStatus('Could not delete — please try again.'));
     };
 
@@ -167,7 +285,9 @@ export default function WorkflowList({ workflows }) {
     // Duplicate a saved workflow: POST a copy (same nodes/edges/description,
     // name prefixed with "Copy of ") then reload so it appears immediately.
     // Mirrors the fetch pattern used for DELETE.
-    const duplicateWorkflow = (workflow) => {
+    // useCallback so the card's `onDuplicate` prop keeps a stable reference and
+    // doesn't bust WorkflowCard's memo on every parent render.
+    const duplicateWorkflow = useCallback((workflow) => {
         fetch('/workflows', {
             method: 'POST',
             headers: {
@@ -183,12 +303,16 @@ export default function WorkflowList({ workflows }) {
                 folder: workflow.folder ?? null,
             }),
         })
-            .then(() => {
+            .then((res) => {
+                // A non-2xx (e.g. the copied name exceeds 255, or the source graph
+                // exceeds the node/edge caps) means nothing was created — don't
+                // falsely report success.
+                if (!res.ok) throw new Error('Failed to duplicate');
                 setStatus(`Duplicated “${workflow.name}”`);
                 router.reload();
             })
             .catch(() => setStatus('Could not duplicate — please try again.'));
-    };
+    }, []);
 
     // ── Pin / favorite ────────────────────────────────────────────────────────
     // The server is the source of truth (`workflow.pinned`), but we keep a local
@@ -197,8 +321,11 @@ export default function WorkflowList({ workflows }) {
     const [pinnedOverrides, setPinnedOverrides] = useState({});
     const isPinned = (w) => pinnedOverrides[w.id] ?? !!w.pinned;
 
-    const togglePin = (workflow) => {
-        const next = !isPinned(workflow);
+    // `currentlyPinned` is passed in by the card (its `pinned` prop) so this
+    // handler doesn't close over `pinnedOverrides` — keeping it a stable
+    // useCallback reference for WorkflowCard's memo. Behavior is unchanged.
+    const togglePin = useCallback((workflow, currentlyPinned) => {
+        const next = !currentlyPinned;
         // Optimistic update — flip immediately, then persist.
         setPinnedOverrides((cur) => ({ ...cur, [workflow.id]: next }));
         fetch(`/workflows/${workflow.id}/pin`, {
@@ -218,7 +345,7 @@ export default function WorkflowList({ workflows }) {
                 setPinnedOverrides((cur) => ({ ...cur, [workflow.id]: !next }));
                 setStatus('Could not update pin — please try again.');
             });
-    };
+    }, []);
 
     // Initial filter state can be seeded from the URL — the Analytics charts link
     // here with `?tag=` / `?q=` to pre-filter by a tag or template type.
@@ -292,7 +419,10 @@ export default function WorkflowList({ workflows }) {
             },
             body: JSON.stringify({ folder: folderName }),
         })
-            .then(() => {
+            .then((res) => {
+                // Don't flash "Moved" on a failed PUT (validation/CSRF/server
+                // error) — the reload would just revert the move.
+                if (!res.ok) throw new Error('Failed to move');
                 setStatus(
                     folderName
                         ? `Moved “${workflow.name}” to ${folderName}`
@@ -343,111 +473,35 @@ export default function WorkflowList({ workflows }) {
         [visibleWorkflows, pinnedOverrides],
     );
 
-    // Renders a single saved-workflow card. Shared between the Pinned section and
-    // the main grid so both stay in sync.
-    const renderCard = (workflow) => {
-        const pinned = isPinned(workflow);
-        return (
-            <motion.div
-                key={workflow.id}
-                layout
-                draggable
-                onDragStart={() => setDraggedId(workflow.id)}
-                onDragEnd={() => {
-                    setDraggedId(null);
-                    setDragOverKey(null);
-                }}
-                initial={{ opacity: 0, scale: 0.92 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.92 }}
-                transition={{ duration: 0.2, ease: 'easeOut' }}
-                className={`relative cursor-grab rounded-xl border border-gray-200 bg-white p-6 shadow-sm transition-opacity active:cursor-grabbing dark:border-gray-800 dark:bg-gray-900 ${
-                    draggedId === workflow.id ? 'opacity-50' : ''
-                }`}
-            >
-                {/* Pin / favorite toggle */}
-                <Tooltip label={pinned ? 'Unpin workflow' : 'Pin to top'}>
-                    <motion.button
-                        type="button"
-                        onClick={() => togglePin(workflow)}
-                        draggable={false}
-                        aria-label={pinned ? `Unpin ${workflow.name}` : `Pin ${workflow.name}`}
-                        aria-pressed={pinned}
-                        whileHover={{ scale: 1.12 }}
-                        whileTap={{ scale: 0.8 }}
-                        className={`absolute right-3 top-3 z-10 inline-flex h-8 w-8 items-center justify-center rounded-full border transition-colors ${
-                            pinned
-                                ? 'border-amber-300 bg-amber-50 text-amber-500 dark:border-amber-500/40 dark:bg-amber-500/15 dark:text-amber-400'
-                                : 'border-gray-200 bg-white text-gray-400 hover:bg-gray-50 hover:text-gray-600 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-500 dark:hover:bg-gray-800 dark:hover:text-gray-300'
-                        }`}
-                    >
-                        <motion.span
-                            key={pinned ? 'on' : 'off'}
-                            initial={{ rotate: -30, scale: 0.4, opacity: 0 }}
-                            animate={{ rotate: 0, scale: 1, opacity: 1 }}
-                            transition={{ type: 'spring', stiffness: 400, damping: 14 }}
-                            className="inline-flex"
-                        >
-                            <Star size={16} fill={pinned ? 'currentColor' : 'none'} aria-hidden="true" />
-                        </motion.span>
-                    </motion.button>
-                </Tooltip>
+    // Stable card handlers (useCallback) so the memoized WorkflowCard's props
+    // keep the same references across parent re-renders (search typing, drag
+    // hover, pin toggles) — only the card whose own props actually changed
+    // re-renders.
+    const handleDragStart = useCallback((workflow) => setDraggedId(workflow.id), []);
+    const handleDragEnd = useCallback(() => {
+        setDraggedId(null);
+        setDragOverKey(null);
+    }, []);
+    const handleDelete = useCallback((workflow) => setPendingDelete(workflow), []);
 
-                {/* Mini graph preview — simplified dots + lines, not the editor. */}
-                <MiniCanvas nodes={workflow.nodes} edges={workflow.edges} className="mb-4" />
-                <Heading as="h3" size="lg" weight="semibold" className="pr-9">
-                    {workflow.name}
-                </Heading>
-                {workflow.description && (
-                    <Text className="mt-1 text-sm text-gray-500">{workflow.description}</Text>
-                )}
-                {showStepCounts && (
-                    <Text className="mt-2 text-xs text-gray-400">
-                        {workflow.nodes.length} steps · {workflow.edges.length} connections
-                    </Text>
-                )}
-                <Text className="mt-1 text-xs text-gray-400">
-                    Saved {new Date(workflow.created_at).toLocaleDateString()}
-                </Text>
-                {(workflow.tags?.length ?? 0) > 0 && (
-                    <div className="mt-3 flex flex-wrap gap-1.5">
-                        {workflow.tags.map((tag, i) => (
-                            <Badge key={`${tag}-${i}`} variant="soft" size="sm" color="blue">
-                                {tag}
-                            </Badge>
-                        ))}
-                    </div>
-                )}
-                {workflow.folder && (
-                    <div className="mt-3">
-                        <Badge variant="soft" size="sm" color="indigo">
-                            <span className="inline-flex items-center gap-1">
-                                <Folder size={11} aria-hidden="true" />
-                                {workflow.folder}
-                            </span>
-                        </Badge>
-                    </div>
-                )}
-                <div className="mt-4 flex gap-2">
-                    <Tooltip label="Open this workflow in the editor">
-                        <Link href={`/workflow?id=${workflow.id}`} draggable={false}>
-                            <Button variant="primary" size="sm">Load</Button>
-                        </Link>
-                    </Tooltip>
-                    <Tooltip label="Save a copy of this workflow">
-                        <Button variant="outline" size="sm" onClick={() => duplicateWorkflow(workflow)}>
-                            Duplicate
-                        </Button>
-                    </Tooltip>
-                    <Tooltip label="Delete this workflow">
-                        <Button variant="outline" size="sm" onClick={() => setPendingDelete(workflow)}>
-                            Delete
-                        </Button>
-                    </Tooltip>
-                </div>
-            </motion.div>
-        );
-    };
+    // Builds a single saved-workflow card. Shared between the Pinned section and
+    // the main grid so both stay in sync. Passes per-card booleans (`pinned`,
+    // `isDragging`) instead of the parent's global drag/pin state, so dragging or
+    // searching doesn't re-render every other card.
+    const renderCard = (workflow) => (
+        <WorkflowCard
+            key={workflow.id}
+            workflow={workflow}
+            pinned={isPinned(workflow)}
+            isDragging={draggedId === workflow.id}
+            showStepCounts={showStepCounts}
+            onDragStart={handleDragStart}
+            onDragEnd={handleDragEnd}
+            onPin={togglePin}
+            onDuplicate={duplicateWorkflow}
+            onDelete={handleDelete}
+        />
+    );
 
     return (
         <>

@@ -28,6 +28,7 @@ import {
     FileCode2,
     StickyNote,
     Eraser,
+    Loader2,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import GradientDivider from '../Components/GradientDivider';
@@ -486,6 +487,10 @@ async function runAgentNode(ctx, fallback) {
         say(emit, node, 'info', `🤖 ${ai?.decision || `Processed "${node.data.label}"`}`);
         return { ...base, ai: ai?.output_data ?? null };
     } catch {
+        // AI call failed (no key, rate limit, network, bad response). The run must
+        // never break, so fall back to the deterministic mock executor — but note
+        // it in the run feed so the user knows this step used a simulated result.
+        say(emit, node, 'warn', `⚠️ AI unavailable for "${node.data.label}" — using a simulated result.`);
         return fallback(ctx);
     }
 }
@@ -2551,6 +2556,10 @@ function WorkflowEditor() {
     const [isSaving, setIsSaving] = useState(false);
     const savingRef = useRef(false);
     const [autoSaveTick, setAutoSaveTick] = useState(0);
+    // Drives the BPMN export button's loading state. The export can save the
+    // workflow first (and auto-name it via Claude), then fetch + download — slow
+    // enough that the button must show progress and lock to avoid double-clicks.
+    const [exportingBpmn, setExportingBpmn] = useState(false);
 
     // Brief "Saved!" confirmation shown on the Save button after a successful
     // manual save; clears itself after 2s. framer-motion animates the swap.
@@ -2588,7 +2597,10 @@ function WorkflowEditor() {
         setReady(false);
         let ignore = false;
         fetch(`/workflows/${savedId}`)
-            .then((r) => r.json())
+            // Reject non-2xx (deleted record → 404, server error) so it lands in
+            // the catch below instead of parsing an error body and feeding the
+            // canvas an undefined graph.
+            .then((r) => (r.ok ? r.json() : Promise.reject(r)))
             .then((data) => {
                 if (ignore) return;
                 const loaded = { nodes: data.nodes, edges: data.edges };
@@ -2615,7 +2627,7 @@ function WorkflowEditor() {
                 // A fresh load is not a user edit — keep auto-save / the unsaved
                 // indicator dormant until the user actually changes something.
                 setIsInitialLoad(true);
-                setStatus('Loaded from database');
+                setStatus('Workflow loaded');
                 setReady(true);
             })
             .catch(() => {
@@ -3223,6 +3235,8 @@ function WorkflowEditor() {
     // Export the workflow as a BPMN 2.0 file. The server-side exporter needs a
     // persisted workflow, so save first if this graph hasn't been stored yet.
     const exportBpmn = async () => {
+        if (exportingBpmn) return; // ignore repeat clicks while one is in flight
+        setExportingBpmn(true);
         try {
             let id = dbId;
             if (!id) {
@@ -3255,6 +3269,8 @@ function WorkflowEditor() {
                 description: 'Could not export BPMN. Try saving the workflow first.',
                 variant: 'error',
             });
+        } finally {
+            setExportingBpmn(false);
         }
     };
 
@@ -3365,7 +3381,7 @@ function WorkflowEditor() {
         let workingName = name;
         if (!workingName.trim()) {
             if (!isAuto && graph.nodes.length > 0) {
-                setStatus('Naming your workflow...');
+                setStatus('Naming your workflow…');
                 const suggested = await suggestWorkflowName();
                 if (suggested) {
                     workingName = suggested;
@@ -3381,7 +3397,7 @@ function WorkflowEditor() {
         savingRef.current = true;
         setIsSaving(true);
         const sig = workflowFingerprint(workingName, description, tags, folder, graph.nodes, graph.edges);
-        if (!isAuto) setStatus('Saving...');
+        if (!isAuto) setStatus('Saving…');
         try {
             const payload = {
                 name: workingName,
@@ -3404,15 +3420,35 @@ function WorkflowEditor() {
                 body: JSON.stringify(payload),
             });
 
+            // A non-2xx response (validation 422 — e.g. too many nodes/tags or an
+            // over-long name — CSRF 419, server 500…) is NOT a successful save.
+            // Bail out WITHOUT marking the snapshot saved, so we never flash
+            // "Saved" on a failed write (silent data loss) and auto-save keeps
+            // retrying the still-unsaved changes on its next tick.
+            if (!res.ok) {
+                if (!isAuto) {
+                    let msg = 'Save failed — please try again';
+                    if (res.status === 422) {
+                        const body = await res.json().catch(() => null);
+                        msg = body?.message
+                            ? `Save failed — ${body.message}`
+                            : 'Save failed — workflow is too large or the name is invalid';
+                    }
+                    setStatus(msg);
+                }
+                return false;
+            }
+
             const data = await res.json();
             setDbId(data.id);
             setLastSavedSig(sig); // mark this exact snapshot as saved
-            if (!isAuto) setStatus('Saved successfully!');
+            if (!isAuto) setStatus('Saved successfully');
             // Return the saved id (truthy) so callers that need it immediately —
             // e.g. BPMN export — don't have to wait for the dbId state to settle.
             return data.id ?? true;
         } catch {
-            if (!isAuto) setStatus('Save failed');
+            // Network failure, aborted request, or unparseable success body.
+            if (!isAuto) setStatus('Save failed — check your connection');
             return false;
         } finally {
             savingRef.current = false;
@@ -3626,6 +3662,9 @@ function WorkflowEditor() {
                                         markEdited();
                                         setName(e.target.value);
                                     }}
+                                    // Matches the DB column / server validation (max 255) so
+                                    // an over-long name can't fail the save server-side.
+                                    maxLength={255}
                                     placeholder="Workflow name..."
                                     className="w-full min-w-0 border-none bg-transparent text-base font-semibold leading-tight text-gray-900 outline-none placeholder-gray-400 dark:text-white lg:min-w-96 lg:text-lg"
                                 />
@@ -3650,7 +3689,7 @@ function WorkflowEditor() {
 
                         {/* Nav cluster for md/sm (top-right, icon-only). lg uses row 2. */}
                         <div className="flex shrink-0 items-center gap-1 lg:hidden">
-                            <Tooltip label="Toggle light / dark mode" placement="bottom">
+                            <Tooltip label="Toggle dark mode" placement="bottom">
                                 <ThemeToggle />
                             </Tooltip>
                             <Tooltip label="Browse your saved workflows" placement="bottom">
@@ -3673,7 +3712,7 @@ function WorkflowEditor() {
                                     <SettingsIcon size={16} aria-hidden="true" />
                                 </button>
                             </Tooltip>
-                            <Tooltip label="Back to home" placement="bottom">
+                            <Tooltip label="Back home" placement="bottom">
                                 <button
                                     type="button"
                                     onClick={() => guardedNavigate('/')}
@@ -3802,11 +3841,17 @@ function WorkflowEditor() {
                                     <button
                                         type="button"
                                         onClick={exportBpmn}
+                                        disabled={exportingBpmn}
                                         aria-label="Export workflow as BPMN"
-                                        className="inline-flex items-center gap-2 rounded-full px-2 py-1.5 text-sm font-medium text-gray-700 transition-colors hover:bg-black/5 dark:text-gray-200 dark:hover:bg-white/10 lg:px-3"
+                                        aria-busy={exportingBpmn}
+                                        className="inline-flex items-center gap-2 rounded-full px-2 py-1.5 text-sm font-medium text-gray-700 transition-colors hover:bg-black/5 disabled:cursor-not-allowed disabled:opacity-60 dark:text-gray-200 dark:hover:bg-white/10 lg:px-3"
                                     >
-                                        <FileCode2 size={16} aria-hidden="true" />
-                                        <span className="hidden lg:inline">BPMN</span>
+                                        {exportingBpmn ? (
+                                            <Loader2 size={16} aria-hidden="true" className="animate-spin" />
+                                        ) : (
+                                            <FileCode2 size={16} aria-hidden="true" />
+                                        )}
+                                        <span className="hidden lg:inline">{exportingBpmn ? 'Exporting…' : 'BPMN'}</span>
                                     </button>
                                 </Tooltip>
 
@@ -3857,7 +3902,7 @@ function WorkflowEditor() {
                                 <Tooltip label="Browse your saved workflows" placement="bottom">
                                     <NavButton onClick={() => guardedNavigate('/workflows-list')}>Saved Workflows</NavButton>
                                 </Tooltip>
-                                <Tooltip label="Toggle light / dark mode" placement="bottom">
+                                <Tooltip label="Toggle dark mode" placement="bottom">
                                     <ThemeToggle />
                                 </Tooltip>
                                 <Tooltip label="Settings" placement="bottom">
@@ -3870,7 +3915,7 @@ function WorkflowEditor() {
                                         <SettingsIcon size={16} aria-hidden="true" />
                                     </button>
                                 </Tooltip>
-                                <Tooltip label="Back to home" placement="bottom">
+                                <Tooltip label="Back home" placement="bottom">
                                     <NavButton onClick={() => guardedNavigate('/')}>Back home</NavButton>
                                 </Tooltip>
                             </div>

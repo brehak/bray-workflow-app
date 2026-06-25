@@ -17,12 +17,12 @@ class WorkflowController extends Controller
     {
         $validated = $request->validate([
             'name'        => 'required|string|max:255',
-            'description' => 'nullable|string',
-            'nodes'       => 'required|array',
+            'description' => 'nullable|string|max:10000',
+            'nodes'       => 'required|array|max:500',
             // `present` (not `required`) so a workflow with nodes but no edges
             // yet — e.g. a single starter node being auto-saved — can be saved.
-            'edges'       => 'present|array',
-            'tags'        => 'nullable|array',
+            'edges'       => 'present|array|max:1000',
+            'tags'        => 'nullable|array|max:20',
             'tags.*'      => 'string',
             'folder'      => 'nullable|string|max:255',
         ]);
@@ -41,10 +41,10 @@ class WorkflowController extends Controller
     {
         $validated = $request->validate([
             'name'        => 'sometimes|string|max:255',
-            'description' => 'nullable|string',
-            'nodes'       => 'sometimes|array',
-            'edges'       => 'sometimes|array',
-            'tags'        => 'nullable|array',
+            'description' => 'nullable|string|max:10000',
+            'nodes'       => 'sometimes|array|max:500',
+            'edges'       => 'sometimes|array|max:1000',
+            'tags'        => 'nullable|array|max:20',
             'tags.*'      => 'string',
             'folder'      => 'nullable|string|max:255',
         ]);

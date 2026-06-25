@@ -1,7 +1,7 @@
 import { Head, Link, router } from '@inertiajs/react';
 import { Button, Heading, Text, Switch, Select, RadioGroup, Input, MultiSwitch } from '@particle-academy/react-fancy';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Download, Trash2, AlertTriangle, Check, Home, ArrowLeft } from 'lucide-react';
+import { Download, Trash2, AlertTriangle, Check, Home, ArrowLeft, Loader2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import GradientDivider from '../Components/GradientDivider';
 import Logo from '../Components/Logo';
@@ -124,6 +124,7 @@ export default function Settings({ workflows = [] }) {
     const [guideOn, setGuideOn] = useState(() => isGuideEnabled());
     const [pendingClear, setPendingClear] = useState(false);
     const [pendingClearChats, setPendingClearChats] = useState(false);
+    const [clearing, setClearing] = useState(false); // bulk-delete in flight
     const [status, setStatus] = useState(null); // { type: 'success' | 'error', text }
 
     // Persist a patch and reflect it in local state.
@@ -194,16 +195,31 @@ export default function Settings({ workflows = [] }) {
 
     // Delete every saved workflow (after confirmation), then refresh.
     const clearAll = async () => {
-        setPendingClear(false);
-        const token = document.querySelector('meta[name="csrf-token"]').content;
+        if (clearing) return; // guard against double-submit
+        // Keep the modal open and switch its button to a loading state while the
+        // (potentially slow) bulk delete runs, so the user always sees progress.
+        setClearing(true);
         try {
-            await Promise.all(
+            // Read the token inside the try so a missing meta tag surfaces as a
+            // handled error rather than an uncaught TypeError.
+            const token = document.querySelector('meta[name="csrf-token"]')?.content;
+            const results = await Promise.all(
                 workflows.map((w) => fetch(`/workflows/${w.id}`, { method: 'DELETE', headers: { 'X-CSRF-TOKEN': token } })),
             );
+            // fetch resolves even on 4xx/5xx, so Promise.all alone can't tell us a
+            // delete failed. If any response wasn't ok, report it (some may have
+            // succeeded — reload so the list reflects what actually remains).
+            if (results.some((res) => !res.ok)) {
+                throw new Error('One or more deletes failed');
+            }
             setStatus({ type: 'success', text: 'All saved workflows have been deleted.' });
             router.reload();
         } catch {
-            setStatus({ type: 'error', text: 'Something went wrong while deleting. Please try again.' });
+            setStatus({ type: 'error', text: 'Could not delete your workflows. Please try again.' });
+            router.reload();
+        } finally {
+            setClearing(false);
+            setPendingClear(false);
         }
     };
 
@@ -753,11 +769,18 @@ export default function Settings({ workflows = [] }) {
                                 </div>
                             </div>
                             <div className="mt-6 flex justify-end gap-3">
-                                <Button variant="outline" color="gray" onClick={() => setPendingClear(false)}>
+                                <Button variant="outline" color="gray" onClick={() => setPendingClear(false)} disabled={clearing}>
                                     Cancel
                                 </Button>
-                                <Button variant="primary" color="red" onClick={clearAll}>
-                                    Delete all
+                                <Button variant="primary" color="red" onClick={clearAll} disabled={clearing} aria-busy={clearing}>
+                                    {clearing ? (
+                                        <span className="inline-flex items-center gap-2">
+                                            <Loader2 size={16} aria-hidden="true" className="animate-spin" />
+                                            Deleting…
+                                        </span>
+                                    ) : (
+                                        'Delete all'
+                                    )}
                                 </Button>
                             </div>
                         </motion.div>

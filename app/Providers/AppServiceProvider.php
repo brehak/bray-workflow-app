@@ -5,6 +5,9 @@ namespace App\Providers;
 use FancySeo\Facades\FancySeo;
 use FancySeo\JsonLd;
 use FancySeo\SitemapBuilder;
+use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -22,7 +25,22 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        $this->configureRateLimiters();
         $this->configureSeo();
+    }
+
+    /**
+     * Rate limiters for the app.
+     *
+     * The 'ai' limiter guards the two endpoints that call the Anthropic API
+     * (/api/agent/node and /api/workflow/chat). Both share a single per-IP
+     * bucket of 30 requests/minute so a client can't run up the API bill or
+     * use the app as a free LLM proxy. Keyed on IP since these routes are
+     * unauthenticated.
+     */
+    private function configureRateLimiters(): void
+    {
+        RateLimiter::for('ai', fn (Request $request) => Limit::perMinute(30)->by($request->ip()));
     }
 
     /**

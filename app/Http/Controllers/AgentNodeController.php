@@ -100,8 +100,10 @@ class AgentNodeController extends Controller
                 'error' => $e->getMessage(),
             ]);
 
+            // Return a generic reason to the client — the real error is logged
+            // above; surfacing $e->getMessage() could leak internal details.
             return response()->json(
-                $this->mockResponse($validated, 'AI request failed: '.$e->getMessage())
+                $this->mockResponse($validated, 'AI request failed. Please try again.')
             );
         }
     }
