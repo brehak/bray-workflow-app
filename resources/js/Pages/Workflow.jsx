@@ -26,6 +26,7 @@ import {
     Settings as SettingsIcon,
     Trash2,
     FileCode2,
+    Code2,
     StickyNote,
     Eraser,
     Loader2,
@@ -44,6 +45,7 @@ import RunFeedPanel from '../Components/RunFeedPanel';
 import RunHistoryPanel from '../Components/RunHistoryPanel';
 import SaveStatusIndicator from '../Components/SaveStatusIndicator';
 import ShortcutsModal from '../Components/ShortcutsModal';
+import CodePanel from '../Components/CodePanel';
 import UnsavedChangesModal from '../Components/UnsavedChangesModal';
 import ThemeToggle from '../Components/ThemeToggle';
 import Tooltip from '../Components/Tooltip';
@@ -2561,6 +2563,9 @@ function WorkflowEditor() {
     // enough that the button must show progress and lock to avoid double-clicks.
     const [exportingBpmn, setExportingBpmn] = useState(false);
 
+    // Toggles the slide-in "View Code" panel (JSON / BPMN source view).
+    const [showCodePanel, setShowCodePanel] = useState(false);
+
     // Brief "Saved!" confirmation shown on the Save button after a successful
     // manual save; clears itself after 2s. framer-motion animates the swap.
     const [justSaved, setJustSaved] = useState(false);
@@ -3274,6 +3279,54 @@ function WorkflowEditor() {
         }
     };
 
+    // Pretty-printed JSON snapshot of the workflow in the fancy-flow format —
+    // feeds the "View Code" panel's JSON tab. Mirrors the exportJson payload but
+    // also carries `folder` so editing + Apply is a clean round-trip.
+    const buildWorkflowJson = () =>
+        JSON.stringify({ name, description, tags, folder, nodes: graph.nodes, edges: graph.edges }, null, 2);
+
+    // Fetch the BPMN XML as a string (for the code panel's read-only BPMN tab).
+    // Like exportBpmn, the server exporter needs a persisted workflow, so save
+    // first if this graph hasn't been stored yet.
+    const fetchBpmnXml = async () => {
+        let id = dbId;
+        if (!id) {
+            id = await persist(true);
+            if (!id) throw new Error('save failed');
+        }
+        const res = await fetch(`/workflows/${id}/export/bpmn`, {
+            method: 'POST',
+            headers: { 'X-CSRF-TOKEN': csrfToken() },
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return res.text();
+    };
+
+    // Apply edited JSON (already parsed + validated by the code panel) onto the
+    // canvas. Shares the load path with importJson: swap the graph, reset undo
+    // history, and restore the surrounding metadata. Returns true on success.
+    const applyJsonToCanvas = (data) => {
+        if (!data || !Array.isArray(data.nodes) || !Array.isArray(data.edges)) {
+            toast({
+                title: 'Apply failed',
+                description: 'JSON must include "nodes" and "edges" arrays.',
+                variant: 'error',
+            });
+            return false;
+        }
+        const imported = { nodes: data.nodes, edges: data.edges };
+        markEdited(); // edited JSON is unsaved work
+        setGraph(imported);
+        resetHistory(imported); // a full replace is a fresh start for undo/redo
+        setName(typeof data.name === 'string' ? data.name : '');
+        setDescription(typeof data.description === 'string' ? data.description : '');
+        setTags(Array.isArray(data.tags) ? data.tags : []);
+        setFolder(typeof data.folder === 'string' ? data.folder : null);
+        setEditorKey((k) => k + 1); // remount so fitView frames the new graph
+        toast({ title: 'Canvas updated', description: 'Applied JSON to the workflow.', variant: 'success' });
+        return true;
+    };
+
     // Open a file picker, parse the chosen JSON, and load it onto the canvas.
     const importJson = () => {
         const input = document.createElement('input');
@@ -3857,6 +3910,20 @@ function WorkflowEditor() {
                                     </button>
                                 </Tooltip>
 
+                                <Tooltip label="View Code" placement="bottom">
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowCodePanel(true)}
+                                        aria-label="View workflow code"
+                                        aria-haspopup="dialog"
+                                        aria-expanded={showCodePanel}
+                                        className="inline-flex items-center gap-2 rounded-full px-2 py-1.5 text-sm font-medium text-gray-700 transition-colors hover:bg-black/5 dark:text-gray-200 dark:hover:bg-white/10 lg:px-3"
+                                    >
+                                        <Code2 size={16} aria-hidden="true" />
+                                        <span className="hidden lg:inline">Code</span>
+                                    </button>
+                                </Tooltip>
+
                                 <Tooltip label="Import JSON" placement="bottom">
                                     <button
                                         type="button"
@@ -4177,6 +4244,15 @@ function WorkflowEditor() {
                 runs={runHistory}
                 onClose={() => setShowHistory(false)}
                 onClear={() => setRunHistory([])}
+            />
+
+            {/* Slide-in "View Code" panel — JSON (editable) + BPMN (read-only). */}
+            <CodePanel
+                open={showCodePanel}
+                onClose={() => setShowCodePanel(false)}
+                buildJson={buildWorkflowJson}
+                onApplyJson={applyJsonToCanvas}
+                fetchBpmn={fetchBpmnXml}
             />
 
             {/* Keyboard shortcuts help modal. */}

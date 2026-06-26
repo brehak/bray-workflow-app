@@ -43,16 +43,22 @@ Under the hood it's a modern **Laravel + Inertia + React** single-page app: Lara
 - 🌗 **Dark & light mode** — a theme that follows your system preference or your choice.
 - ⌨️ **Keyboard shortcuts** — move fast with shortcuts for the actions you reach for most.
 - 🎓 **Guided onboarding** — a step-by-step beginner guide gets newcomers building in minutes.
-- 🤖 **Claude AI chat assistant** — a built-in assistant with 17 slash commands to build, edit and explain your workflows.
+- 🤖 **Claude AI chat assistant** — a built-in assistant with 22 slash commands to build, edit and explain your workflows.
+- 💬 **Suggested starter prompts** — context-aware prompt suggestions in chat to help you get going.
+- 👋 **Auto-introduction** — the assistant introduces the workflow automatically when you load it.
 - 🧠 **Agentic nodes** — nodes that reason and act, powered by Prism PHP + Claude AI.
+- 🪜 **Plain-English steps** — run `/steps` for a clear, numbered walkthrough of what your workflow does.
+- ⚠️ **Risks, time & roles analysis** — `/risks`, `/time` and `/roles` surface failure points, real-world timing and the job roles involved.
+- 👀 **View Code panel** — inspect the live workflow as JSON or BPMN in a slide-in code panel, powered by `fancy-code`.
 - 🔄 **BPMN 2.0 export** — export any workflow to the standard BPMN 2.0 XML format.
 - 🩺 **Workflow health score** — run `/score` to grade a workflow and surface issues before you ship it.
-- 💡 **Smart node suggestions** — context-aware next-step recommendations as you build.
+- 💡 **Smart node suggestions** — context-aware next-step recommendations as you build, powered by Claude AI.
 - 📁 **Folders & pinning** — organize workflows into folders and pin the ones you reach for most.
 - 📊 **Analytics dashboard** — visualize run metrics, with one-click PDF report export.
 - ⏱️ **Node performance stats** — per-node execution timing surfaced in your run history.
+- 🌟 **Animated execution path** — watch the active path light up as a workflow runs.
 - 🖼️ **Canvas themes** — switch the editor canvas between visual themes.
-- ✨ **Auto-name workflows** — generate a fitting workflow name automatically.
+- ✨ **Auto-name workflows** — generate a fitting workflow name automatically with Claude AI.
 - 📝 **Rich markdown rendering** — node descriptions render as styled prose via `ContentRenderer`.
 
 ---
@@ -71,6 +77,7 @@ Under the hood it's a modern **Laravel + Inertia + React** single-page app: Lara
 | [Inertia.js (React)](https://inertiajs.com) | `^3.3` | Client-side adapter — SPA navigation without an API |
 | [react-fancy](https://ui.particle.academy) | `^4.4` | Particle Academy UI component library |
 | [fancy-flow](https://ui.particle.academy) | `^0.5` | Particle Academy node-based workflow canvas |
+| [fancy-code](https://ui.particle.academy) | `^0.5` | Particle Academy embedded code editor powering the View Code panel |
 | [fancy-echarts](https://ui.particle.academy) | `^4.0` | ECharts-powered charts for the analytics dashboard |
 | [fancy-inertia](https://ui.particle.academy) | `^0.9` | Particle Academy Inertia.js integration helpers |
 | [fancy-app-update](https://ui.particle.academy) | `^0.1` | In-app update notifications |
@@ -165,6 +172,7 @@ Fancy Workflows is a showcase for **[Fancy UI](https://ui.particle.academy) by [
 
 - **[`react-fancy`](https://ui.particle.academy)** — the component library powering every button, heading, badge, input and switch in the app.
 - **[`fancy-flow`](https://ui.particle.academy)** — the node-based canvas that powers the visual workflow editor.
+- **[`fancy-code`](https://ui.particle.academy)** — the embedded code editor behind the View Code panel's JSON and BPMN tabs.
 - **[`fancy-echarts`](https://ui.particle.academy)** — the charting components behind the analytics dashboard.
 - **[`fancy-inertia`](https://ui.particle.academy)** — Inertia.js integration helpers for Fancy UI.
 - **[`fancy-app-update`](https://ui.particle.academy)** — in-app update notifications.

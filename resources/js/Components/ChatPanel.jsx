@@ -55,6 +55,12 @@ const COMMAND_PROMPTS = {
     '/optimize': 'Suggest specific ways to improve or optimize this workflow.',
     '/score':
         'You are a workflow analyst. Analyze this workflow and give it a health score out of 100. Score it on these criteria: Completeness (are all paths complete?), Clarity (are node labels clear?), Efficiency (any redundant steps?), Error handling (are edge cases covered?), Best practices (follows workflow design patterns?). Format your response as: A large score number, then a brief one-line verdict, then a breakdown of each criteria with its sub-score and a one sentence explanation, then 2-3 specific actionable improvements. Use markdown formatting.',
+    '/risks':
+        'Analyze this workflow and identify the top 3-5 potential risks, failure points, or things that could go wrong. For each risk, give it a severity (High/Medium/Low), a one sentence description, and a brief mitigation suggestion. Use markdown formatting with bold risk names and colored severity indicators.',
+    '/time':
+        'Estimate how long this workflow would take in real life from start to finish. Break down the time estimate for each major step, give a total minimum and maximum time range, and note any steps that could be bottlenecks. Format as a clean table with Step, Min Time, Max Time columns, then a summary.',
+    '/roles':
+        'Identify all the job roles or departments that would be involved in this workflow. For each role, list which specific steps they are responsible for and what their involvement looks like. Format as a clean list with role names in bold.',
     '/suggest': 'Suggest a sensible next step to add to this workflow, and offer to add it.',
     '/example': 'Show an example workflow I could build, and offer to create it.',
     '/expand': 'Expand the current workflow with additional useful steps.',
@@ -181,6 +187,12 @@ const isScoreCommand = (text) => /^\/score(\s.*)?$/i.test(text.trim());
 // markdown, rather than splitting each item into a clickable option button.
 const isStepsCommand = (text) => /^\/steps(\s.*)?$/i.test(text.trim());
 
+// Is this input one of the analysis commands (/risks, /time, /roles) whose reply
+// is pre-formatted markdown (severity lists, time tables, role breakdowns)? Like
+// /score and /steps, render these straight through ContentRenderer rather than
+// splitting numbered items into clickable option buttons.
+const isMarkdownAnalysisCommand = (text) => /^\/(risks|time|roles)(\s.*)?$/i.test(text.trim());
+
 // ── Thinking-indicator status stages ────────────────────────────────────────
 // While we wait, the TypingIndicator cycles through a short, fading sequence of
 // status lines so the wait feels like real work happening. We pick the sequence
@@ -202,7 +214,7 @@ const THINKING_STAGES = {
 // Slash commands that change the graph (so the build narrative fits) vs. ones
 // that only answer/explain (so the simpler "thinking" narrative fits).
 const BUILDING_COMMANDS = new Set(['/build', '/add', '/modify', '/remove', '/connect', '/branch', '/expand', '/example', '/suggest']);
-const QUESTION_COMMANDS = new Set(['/explain', '/steps', '/summarize', '/review', '/optimize', '/score', '/save', '/reset']);
+const QUESTION_COMMANDS = new Set(['/explain', '/steps', '/summarize', '/review', '/optimize', '/score', '/risks', '/time', '/roles', '/save', '/reset']);
 
 // Decide which thinking narrative to show for a message. Explicit build/question
 // commands map cleanly; plain free-text (the common "build me a…" case) defaults
@@ -364,6 +376,9 @@ export const COMMAND_CATEGORIES = [
             { cmd: '/review', desc: 'Review the workflow for issues' },
             { cmd: '/optimize', desc: 'Suggest ways to improve it' },
             { cmd: '/score', desc: 'Get a health score for this workflow' },
+            { cmd: '/risks', desc: 'Identify potential risks and failure points' },
+            { cmd: '/time', desc: 'Estimate real-world time for this workflow' },
+            { cmd: '/roles', desc: 'Identify job roles involved in this workflow' },
         ],
     },
     {
@@ -863,10 +878,11 @@ export default function ChatPanel({ workflow, workflowName, onApplyWorkflow, onR
         const text = (typeof override === 'string' ? override : draft).trim();
         if (!text || loading) return;
 
-        // `/score` returns a pre-formatted markdown health report and `/steps`
-        // returns a plain-English numbered list of steps; flag either so its reply
+        // `/score` returns a pre-formatted markdown health report, `/steps`
+        // returns a plain-English numbered list of steps, and /risks, /time, /roles
+        // return pre-formatted markdown analyses; flag any of these so the reply
         // renders straight through ContentRenderer (no button conversion).
-        const scoring = isScoreCommand(text) || isStepsCommand(text);
+        const scoring = isScoreCommand(text) || isStepsCommand(text) || isMarkdownAnalysisCommand(text);
 
         // `/clear` is a local action — wipe the conversation (and its stored copy).
         if (text === '/clear' || text === '/clear ') {

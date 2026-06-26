@@ -1,4 +1,5 @@
 @import 'tailwindcss';
+@import '@particle-academy/fancy-code/styles.css';
 
 /* Drive `dark:` utilities from a `.dark` class on <html> (toggled by useTheme)
    instead of Tailwind v4's default prefers-color-scheme media query. */
@@ -6,6 +7,7 @@
 
 @source '../js/**/*.{js,jsx,tsx}';
 @source '../../node_modules/@particle-academy/react-fancy/dist/**/*.js';
+@source '../../node_modules/@particle-academy/fancy-code/dist/**/*.js';
 @source '../../vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php';
 @source '../../storage/framework/views/*.php';
 
