@@ -3614,10 +3614,12 @@ function WorkflowEditor() {
                 <header className="sticky top-0 z-50 flex flex-col gap-1.5 border-b border-gray-200/60 bg-white/70 px-4 py-2 backdrop-blur-md transition-colors duration-300 supports-[backdrop-filter]:bg-white/60 dark:border-gray-800/60 dark:bg-gray-900/70 dark:supports-[backdrop-filter]:bg-gray-900/60 lg:flex-row lg:items-center lg:justify-between lg:gap-3 lg:px-6 lg:py-2.5">
                     {/* ── Row 1 (on lg: the left side) ─────────────────────────── */}
                     <div className="flex min-w-0 items-center justify-between gap-2 lg:flex-1 lg:justify-start lg:gap-3">
-                        {/* Brand: logo + name + description (md+) + tags (lg) */}
-                        <div className="flex min-w-0 items-center gap-2 lg:items-start lg:gap-3">
+                        {/* Brand: logo + name + description (md+) + tags (lg). Grows to
+                            fill row 1 on lg so the name/description can use the full
+                            width between the logo and the right-hand action buttons. */}
+                        <div className="flex min-w-0 items-center gap-2 lg:flex-1 lg:items-start lg:gap-3">
                             <Logo className="shrink-0 text-indigo-600 dark:text-indigo-400" />
-                            <div className="flex min-w-0 flex-col gap-0.5">
+                            <div className="flex min-w-0 flex-col gap-0.5 lg:flex-1">
                                 <div className="flex items-center gap-1.5">
                                     <motion.span
                                         initial={{ opacity: 0, y: -4 }}

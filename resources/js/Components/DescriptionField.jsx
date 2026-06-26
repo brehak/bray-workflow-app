@@ -83,19 +83,23 @@ export default function DescriptionField({ value, onChange, placeholder = 'Add a
                         }
                     }}
                     title="Click to edit"
-                    className="group flex w-full cursor-text items-start gap-2 rounded-md px-2 py-1 text-left text-sm outline-none transition-colors hover:bg-gray-100/70 focus-visible:ring-2 focus-visible:ring-indigo-500/30 dark:hover:bg-gray-800/40"
+                    className="group flex w-full cursor-text items-center gap-2 rounded-md px-2 py-1 text-left text-sm outline-none transition-colors hover:bg-gray-100/70 focus-visible:ring-2 focus-visible:ring-indigo-500/30 dark:hover:bg-gray-800/40"
                 >
                     {value ? (
-                        <div className="min-w-0 flex-1 overflow-hidden" style={{ maxHeight: MAX_HEIGHT }}>
+                        // Collapsed view: a single line that truncates with an ellipsis.
+                        // `truncate` needs inline content, so we flatten the rendered
+                        // Markdown's block elements to inline (the prose styling — bold,
+                        // links, code — is preserved) and drop their margins.
+                        <div className="min-w-0 flex-1 truncate [&_*]:m-0 [&_*]:inline">
                             <WorkflowContentRenderer
                                 content={value}
                                 className="text-gray-600 dark:text-gray-300"
                             />
                         </div>
                     ) : (
-                        <span className="min-w-0 truncate text-gray-400 dark:text-gray-500">{placeholder}</span>
+                        <span className="min-w-0 flex-1 truncate text-gray-400 dark:text-gray-500">{placeholder}</span>
                     )}
-                    <span className="ml-auto hidden shrink-0 items-center gap-1 text-xs text-gray-400 opacity-0 transition-opacity group-hover:opacity-100 dark:text-gray-500 sm:flex">
+                    <span className="hidden shrink-0 items-center gap-1 text-xs text-gray-400 opacity-0 transition-opacity group-hover:opacity-100 dark:text-gray-500 sm:flex">
                         <Pencil size={11} aria-hidden="true" />
                         click to edit
                     </span>

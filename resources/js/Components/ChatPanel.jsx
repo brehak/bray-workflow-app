@@ -48,6 +48,8 @@ const COMMAND_PROMPTS = {
     '/connect': 'Connect these steps in the current workflow:',
     '/branch': 'Add a decision branch to the current workflow:',
     '/explain': 'Explain what this workflow does, step by step.',
+    '/steps':
+        'List every step in this workflow as a simple numbered list in plain English. Write it so a non-technical person could understand and follow it. Use simple action verbs. Format it as a clean numbered list with a one sentence description for each step.',
     '/summarize': 'Give a short, plain-English summary of this workflow.',
     '/review': 'Review this workflow for issues, gaps, or mistakes, and list what you find.',
     '/optimize': 'Suggest specific ways to improve or optimize this workflow.',
@@ -113,6 +115,59 @@ const removeStored = (key) => {
     }
 };
 
+// ── Auto-introduction ───────────────────────────────────────────────────────
+// When a workflow is *loaded* — a template via `?type=` or a saved workflow via
+// `?id=` — the panel asks Claude for a brief, friendly intro and slots it in at
+// the top of the chat. It's generated once per workflow: a localStorage flag,
+// keyed by the loaded workflow's identity, means a plain page refresh (same URL)
+// won't trigger it again. A blank, brand-new canvas has nothing to introduce, so
+// `autoIntroIdentity` returns null and no intro is requested.
+const AUTO_INTRO_PROMPT =
+    'In 2-3 sentences, briefly introduce this workflow — what type of process it is, what business problem it solves, and one key thing to know about it. Be concise and friendly. Don\'t start with I.';
+
+const INTRO_SEEN_PREFIX = 'workflow_intro_seen_';
+
+// The stable identity of the workflow currently loaded from the URL, or null for
+// a blank new canvas (no `?type=`/`?id=`). Saved workflows key by id, templates
+// by type, so each is auto-introduced at most once — even across refreshes.
+const autoIntroIdentity = () => {
+    try {
+        const params = new URLSearchParams(window.location.search);
+        const id = params.get('id');
+        if (id) return `id:${id}`;
+        const type = params.get('type');
+        if (type) return `type:${type}`;
+    } catch {
+        // window/URL unavailable — skip the auto-intro entirely.
+    }
+    return null;
+};
+
+const hasSeenIntro = (identity) => {
+    try {
+        return localStorage.getItem(`${INTRO_SEEN_PREFIX}${identity}`) === '1';
+    } catch {
+        return false;
+    }
+};
+
+const markIntroSeen = (identity) => {
+    try {
+        localStorage.setItem(`${INTRO_SEEN_PREFIX}${identity}`, '1');
+    } catch {
+        // best-effort; if storage is unavailable the intro may show again later.
+    }
+};
+
+// Slot the auto-intro message directly beneath the welcome bubble and above any
+// prior conversation, so it reads as a lead-in rather than a reply at the bottom.
+const withIntroMessage = (messages, text) => {
+    const intro = { id: nextId(), role: 'assistant', text, intro: true };
+    return messages[0]?.id === 'welcome'
+        ? [messages[0], intro, ...messages.slice(1)]
+        : [intro, ...messages];
+};
+
 // Is this input the explicit "/run" command (optionally with trailing space)?
 const isRunCommand = (text) => /^\/run(\s.*)?$/i.test(text.trim());
 
@@ -120,6 +175,11 @@ const isRunCommand = (text) => /^\/run(\s.*)?$/i.test(text.trim());
 // report (score, verdict, per-criteria breakdown, improvements) that we render
 // straight through ContentRenderer rather than splitting into option buttons.
 const isScoreCommand = (text) => /^\/score(\s.*)?$/i.test(text.trim());
+
+// Is this input the "/steps" command? Its reply is a plain-English numbered list
+// of the workflow's steps that we render straight through ContentRenderer as
+// markdown, rather than splitting each item into a clickable option button.
+const isStepsCommand = (text) => /^\/steps(\s.*)?$/i.test(text.trim());
 
 // ── Thinking-indicator status stages ────────────────────────────────────────
 // While we wait, the TypingIndicator cycles through a short, fading sequence of
@@ -142,7 +202,7 @@ const THINKING_STAGES = {
 // Slash commands that change the graph (so the build narrative fits) vs. ones
 // that only answer/explain (so the simpler "thinking" narrative fits).
 const BUILDING_COMMANDS = new Set(['/build', '/add', '/modify', '/remove', '/connect', '/branch', '/expand', '/example', '/suggest']);
-const QUESTION_COMMANDS = new Set(['/explain', '/summarize', '/review', '/optimize', '/score', '/save', '/reset']);
+const QUESTION_COMMANDS = new Set(['/explain', '/steps', '/summarize', '/review', '/optimize', '/score', '/save', '/reset']);
 
 // Decide which thinking narrative to show for a message. Explicit build/question
 // commands map cleanly; plain free-text (the common "build me a…" case) defaults
@@ -299,6 +359,7 @@ export const COMMAND_CATEGORIES = [
         category: 'Understanding & Analysis',
         commands: [
             { cmd: '/explain', desc: 'Explain what this workflow does' },
+            { cmd: '/steps', desc: 'List all steps in plain English' },
             { cmd: '/summarize', desc: 'Give a short summary' },
             { cmd: '/review', desc: 'Review the workflow for issues' },
             { cmd: '/optimize', desc: 'Suggest ways to improve it' },
@@ -329,6 +390,58 @@ const WELCOME_MESSAGE = {
     role: 'assistant',
     text: "Hi! I can help you build and modify workflows. Type a message or use / for commands.",
 };
+
+// ── Starter prompts ─────────────────────────────────────────────────────────
+// Shown under the welcome bubble while the chat is still empty, to give the user
+// a quick way in. The four suggestions are context-aware: a blank canvas leans
+// toward building from scratch, a loaded template toward understanding it, and a
+// saved workflow toward refining it. Detected from the same signals the rest of
+// the panel uses — an `id:` storageKey means a saved workflow; otherwise the
+// presence of nodes distinguishes a launched template from a blank canvas.
+function starterPromptsFor(storageKey, workflow) {
+    const isSaved = storageKey?.startsWith(SAVED_KEY_PREFIX);
+    const hasNodes = (workflow?.nodes?.length ?? 0) > 0;
+
+    if (isSaved) {
+        return ['Explain this workflow', 'Score this workflow', 'Add a step', 'Optimize this workflow'];
+    }
+    if (hasNodes) {
+        return ['Explain this workflow', 'Score this workflow', 'How can I improve this?', 'List all steps'];
+    }
+    return ['Build a workflow for me', 'What can you help me with?', 'Show me an example', 'Build an approval process'];
+}
+
+/**
+ * StarterPrompts — the 2×2 grid of suggested prompt pills shown beneath the
+ * welcome bubble while the chat is empty. Clicking one sends it as a message;
+ * the grid then disappears as soon as the conversation has any real turns.
+ */
+function StarterPrompts({ prompts, onSelect, disabled }) {
+    return (
+        <motion.div
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.35, ease: 'easeOut', delay: 0.1 }}
+            className="grid grid-cols-2 gap-2 pl-8 pr-1"
+        >
+            {prompts.map((prompt, i) => (
+                <motion.button
+                    key={prompt}
+                    type="button"
+                    disabled={disabled}
+                    onClick={() => onSelect(prompt)}
+                    initial={{ opacity: 0, y: 6 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.3, ease: 'easeOut', delay: 0.18 + i * 0.05 }}
+                    whileTap={disabled ? undefined : { scale: 0.98 }}
+                    className="rounded-full border border-gray-200/70 bg-gray-50/70 px-3 py-2 text-center text-xs font-medium text-gray-600 transition-colors hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-700 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-700/60 dark:bg-gray-800/40 dark:text-gray-300 dark:hover:border-indigo-400/60 dark:hover:bg-indigo-500/10 dark:hover:text-indigo-200"
+                >
+                    {prompt}
+                </motion.button>
+            ))}
+        </motion.div>
+    );
+}
 
 // ── Numbered-option rendering ───────────────────────────────────────────────
 // When Claude offers a set of choices as a numbered list — whether across lines
@@ -416,11 +529,19 @@ const ensureSeqPast = (messages) => {
 
 function MessageBubble({ message, onOptionSelect, optionsDisabled }) {
     const isUser = message.role === 'user';
+    // Auto-introductions slide in from the side (rather than the usual gentle
+    // rise) and carry a small "Auto-introduction" label so it's clear they were
+    // generated automatically when the workflow loaded.
+    const isIntro = message.intro === true;
     return (
         <motion.div
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ type: 'spring', stiffness: 360, damping: 30 }}
+            initial={isIntro ? { opacity: 0, x: -28 } : { opacity: 0, y: 8 }}
+            animate={isIntro ? { opacity: 1, x: 0 } : { opacity: 1, y: 0 }}
+            transition={
+                isIntro
+                    ? { type: 'spring', stiffness: 260, damping: 26 }
+                    : { type: 'spring', stiffness: 360, damping: 30 }
+            }
             className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}
         >
             <div className={`flex max-w-[85%] gap-2 ${isUser ? 'flex-row-reverse' : 'flex-row'}`}>
@@ -432,32 +553,44 @@ function MessageBubble({ message, onOptionSelect, optionsDisabled }) {
                         <Sparkles size={13} />
                     </span>
                 )}
-                <div
-                    className={
-                        isUser
-                            ? 'rounded-2xl rounded-tr-sm bg-indigo-600 px-3 py-2 text-sm text-white shadow-sm'
-                            : 'rounded-2xl rounded-tl-sm border border-gray-200/70 bg-white/70 px-3 py-2 text-sm text-gray-700 shadow-sm backdrop-blur dark:border-gray-700/60 dark:bg-gray-800/60 dark:text-gray-200'
-                    }
-                >
-                    {/* User turns are always plain text; Claude's replies route through
-                        renderMessageContent so numbered lists become clickable buttons. */}
-                    {isUser ? (
-                        <span className="whitespace-pre-wrap break-words">{message.text}</span>
-                    ) : (
-                        renderMessageContent(message.text, onOptionSelect, optionsDisabled, message.forceMarkdown)
+                <div className="flex min-w-0 flex-col">
+                    {isIntro && (
+                        <p className="mb-1 flex items-center gap-1 pl-1 text-[10px] font-medium uppercase tracking-wider text-gray-400 dark:text-gray-500">
+                            <Sparkles size={9} aria-hidden="true" />
+                            Auto-introduction
+                        </p>
                     )}
-                    {message.applied && (
-                        <span className="mt-1.5 flex items-center gap-1 text-[11px] font-medium text-emerald-600 dark:text-emerald-400">
-                            <Check size={12} />
-                            Applied to canvas
-                        </span>
-                    )}
-                    {message.ran && (
-                        <span className="mt-1.5 flex items-center gap-1 text-[11px] font-medium text-indigo-600 dark:text-indigo-400">
-                            <Play size={11} />
-                            Running on canvas
-                        </span>
-                    )}
+                    <div
+                        className={
+                            isUser
+                                ? 'rounded-2xl rounded-tr-sm bg-indigo-600 px-3 py-2 text-sm text-white shadow-sm'
+                                : isIntro
+                                  ? // Auto-intros get a subtle indigo tint + accent border so they
+                                    // read as an automatic introduction, not a reply to the user.
+                                    'rounded-2xl rounded-tl-sm border border-indigo-200/80 bg-indigo-50/70 px-3 py-2 text-sm text-gray-700 shadow-sm backdrop-blur dark:border-indigo-400/30 dark:bg-indigo-500/10 dark:text-gray-100'
+                                  : 'rounded-2xl rounded-tl-sm border border-gray-200/70 bg-white/70 px-3 py-2 text-sm text-gray-700 shadow-sm backdrop-blur dark:border-gray-700/60 dark:bg-gray-800/60 dark:text-gray-200'
+                        }
+                    >
+                        {/* User turns are always plain text; Claude's replies route through
+                            renderMessageContent so numbered lists become clickable buttons. */}
+                        {isUser ? (
+                            <span className="whitespace-pre-wrap break-words">{message.text}</span>
+                        ) : (
+                            renderMessageContent(message.text, onOptionSelect, optionsDisabled, message.forceMarkdown)
+                        )}
+                        {message.applied && (
+                            <span className="mt-1.5 flex items-center gap-1 text-[11px] font-medium text-emerald-600 dark:text-emerald-400">
+                                <Check size={12} />
+                                Applied to canvas
+                            </span>
+                        )}
+                        {message.ran && (
+                            <span className="mt-1.5 flex items-center gap-1 text-[11px] font-medium text-indigo-600 dark:text-indigo-400">
+                                <Play size={11} />
+                                Running on canvas
+                            </span>
+                        )}
+                    </div>
                 </div>
             </div>
         </motion.div>
@@ -730,9 +863,10 @@ export default function ChatPanel({ workflow, workflowName, onApplyWorkflow, onR
         const text = (typeof override === 'string' ? override : draft).trim();
         if (!text || loading) return;
 
-        // `/score` returns a pre-formatted markdown health report; flag its reply
-        // so it renders straight through ContentRenderer (no button conversion).
-        const scoring = isScoreCommand(text);
+        // `/score` returns a pre-formatted markdown health report and `/steps`
+        // returns a plain-English numbered list of steps; flag either so its reply
+        // renders straight through ContentRenderer (no button conversion).
+        const scoring = isScoreCommand(text) || isStepsCommand(text);
 
         // `/clear` is a local action — wipe the conversation (and its stored copy).
         if (text === '/clear' || text === '/clear ') {
@@ -942,6 +1076,76 @@ export default function ChatPanel({ workflow, workflowName, onApplyWorkflow, onR
         }
     };
 
+    // ── Auto-introduction ───────────────────────────────────────────────────
+    // `introStateRef` guards the whole flow so it runs at most once per mount:
+    // 'idle' → 'scheduled' (timer armed) → 'done'. The timer is stored so it's
+    // only cleared on unmount — never on a dependency change — so a graph edit in
+    // the first second can't cancel a pending intro.
+    const introStateRef = useRef('idle');
+    const introTimerRef = useRef(null);
+
+    // Fetch the intro and insert it at the top of the chat. Best-effort and
+    // intentionally quiet: it doesn't touch the shared `loading`/typing state, so
+    // it never blocks the user from typing while in flight; on any failure (no
+    // key, network blip) it simply does nothing.
+    const runAutoIntro = async (identity) => {
+        try {
+            const res = await fetch('/api/workflow/chat', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Accept: 'application/json',
+                    'X-CSRF-TOKEN': csrfToken(),
+                },
+                body: JSON.stringify({
+                    message: AUTO_INTRO_PROMPT,
+                    workflow_name: nameRef.current ?? 'Workflow',
+                    workflow: {
+                        nodes: workflowRef.current?.nodes ?? [],
+                        edges: workflowRef.current?.edges ?? [],
+                    },
+                    conversation_history: [],
+                    response_length: getSettings().chatResponseLength,
+                }),
+            });
+            if (!res.ok) return;
+            const data = await res.json();
+            const text = typeof data?.reply === 'string' ? data.reply.trim() : '';
+            if (!text) return;
+            // Mark seen only once we actually have an intro to show, so a failed
+            // attempt can still introduce the workflow on a later visit.
+            markIntroSeen(identity);
+            setMessages((prev) => withIntroMessage(prev, text));
+        } catch {
+            // Auto-intro is best-effort — stay silent if Claude can't be reached.
+        } finally {
+            introStateRef.current = 'done';
+        }
+    };
+
+    // One second after a template/saved workflow loads, kick off the intro. We
+    // wait for the graph to be present (a saved workflow's nodes arrive async) so
+    // the intro describes the real steps, not an empty canvas. Re-runs on prop
+    // changes but only ever arms the timer once (see `introStateRef`).
+    useEffect(() => {
+        if (introStateRef.current !== 'idle') return;
+
+        const identity = autoIntroIdentity();
+        if (!identity || hasSeenIntro(identity)) {
+            introStateRef.current = 'done';
+            return;
+        }
+        // Nothing to introduce yet — wait for a later render once nodes are in.
+        if ((workflow?.nodes?.length ?? 0) === 0) return;
+
+        introStateRef.current = 'scheduled';
+        introTimerRef.current = setTimeout(() => runAutoIntro(identity), 1000);
+        // Deliberately NOT cleared here — only on unmount (below).
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [storageKey, workflow]);
+
+    useEffect(() => () => clearTimeout(introTimerRef.current), []);
+
     // Send a prompt queued from outside the panel (the config panel's "Ask Claude"
     // buttons). Each click bumps `submittedPrompt.nonce`, so we fire once per click
     // — even when the same prompt is asked twice — and never re-fire on remount.
@@ -1045,6 +1249,13 @@ export default function ChatPanel({ workflow, workflowName, onApplyWorkflow, onR
                 {messages.map((m) => (
                     <MessageBubble key={m.id} message={m} onOptionSelect={send} optionsDisabled={loading} />
                 ))}
+                {/* Suggested starter prompts — shown until the USER sends their first
+                    message. The auto-introduction (an `intro` message) and the canned
+                    welcome bubble don't count, so the prompts stay visible beneath an
+                    auto-intro and only vanish once a real user/assistant turn exists. */}
+                {!messages.some((m) => m.id !== 'welcome' && !m.intro) && !loading && (
+                    <StarterPrompts prompts={starterPromptsFor(storageKey, workflow)} onSelect={send} disabled={loading} />
+                )}
                 <AnimatePresence>{loading && <TypingIndicator key="typing" mode={thinkingMode} />}</AnimatePresence>
             </div>
 
