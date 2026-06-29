@@ -262,6 +262,15 @@ function expandCommand(text) {
     return trimmed;
 }
 
+// The leading slash command (lowercased) from raw input, e.g. "/steps", or null
+// for free-text. Sent to the backend so it can route simple commands to a faster,
+// cheaper model and skip the graph schema. Free-text (null) defaults server-side
+// to the stronger model with the full schema, since it may be a build request.
+function extractCommand(text) {
+    const match = text.trim().match(/^(\/\S+)/);
+    return match ? match[1].toLowerCase() : null;
+}
+
 const csrfToken = () => document.querySelector('meta[name="csrf-token"]')?.content ?? '';
 
 // ── Generated-workflow validation ───────────────────────────────────────────
@@ -1027,8 +1036,10 @@ export default function ChatPanel({ workflow, workflowName, onApplyWorkflow, onR
         setLoading(true);
 
         // POST one turn to Claude with the given message + prior conversation,
-        // always sending the live canvas graph. Returns the parsed response.
-        const postChat = async (message, conversationHistory) => {
+        // always sending the live canvas graph. `command` (e.g. "/steps", or null
+        // for free-text) lets the backend route simple commands to a faster model.
+        // Returns the parsed response.
+        const postChat = async (message, conversationHistory, command = null) => {
             const res = await fetch('/api/workflow/chat', {
                 method: 'POST',
                 headers: {
@@ -1038,6 +1049,7 @@ export default function ChatPanel({ workflow, workflowName, onApplyWorkflow, onR
                 },
                 body: JSON.stringify({
                     message,
+                    command,
                     workflow_name: nameRef.current ?? 'Workflow',
                     workflow: {
                         nodes: workflowRef.current?.nodes ?? [],
@@ -1055,7 +1067,10 @@ export default function ChatPanel({ workflow, workflowName, onApplyWorkflow, onR
 
         try {
             const firstMessage = expandCommand(text);
-            let data = await postChat(firstMessage, history);
+            // Route on the original command the user typed (the expanded message
+            // no longer carries the slash). Auto-fix retries below pass no command
+            // so they default to the build-capable model.
+            let data = await postChat(firstMessage, history, extractCommand(text));
             // Running transcript so each auto-fix turn keeps full context.
             const convo = [...history, { role: 'user', content: firstMessage }];
 
@@ -1179,6 +1194,7 @@ export default function ChatPanel({ workflow, workflowName, onApplyWorkflow, onR
                 },
                 body: JSON.stringify({
                     message: AUTO_INTRO_PROMPT,
+                    command: '/intro', // simple summary → fast model, no graph schema
                     workflow_name: nameRef.current ?? 'Workflow',
                     workflow: {
                         nodes: workflowRef.current?.nodes ?? [],

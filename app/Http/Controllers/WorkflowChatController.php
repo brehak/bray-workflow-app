@@ -21,6 +21,16 @@ use Throwable;
  * canvas in one shot — mirroring how the controlled FlowEditor already swaps its
  * whole `{ nodes, edges }` value.
  *
+ * Token strategy (a proper prompt chain):
+ *   1. A concise system prompt (the graph schema is appended ONLY for edits).
+ *   2. The current workflow, compressed — never the full nodes/edges JSON.
+ *   3. The last 10 turns of conversation history (older turns trimmed).
+ *   4. The current user message.
+ *
+ * Model routing keeps cost down: simple analysis commands (/steps, /explain,
+ * /roles, …) run on a fast, cheap model; reasoning-heavy work (/score, /optimize)
+ * and any workflow building run on a stronger model.
+ *
  * Resilience mirrors AgentNodeController: the endpoint must never break the app.
  * With no API key, or on any AI failure, it degrades to a friendly text-only
  * reply that makes no canvas changes.
@@ -28,23 +38,40 @@ use Throwable;
 class WorkflowChatController extends Controller
 {
     /**
-     * The Claude model used to reason about and edit workflows.
-     *
-     * Defaults to Anthropic's most capable model. Swap in 'claude-haiku-4-5'
-     * to trade some quality for lower cost/latency.
+     * Fast, cheap model for simple Q&A / analysis that doesn't need heavy
+     * reasoning or the graph schema (/steps, /explain, /roles, …).
      */
-    private const MODEL = 'claude-opus-4-8';
+    private const MODEL_FAST = 'claude-haiku-4-5';
 
     /**
-     * Max output tokens for a chat turn. Kept generous so longer replies have
-     * ample room to finish without being truncated mid-response.
+     * Stronger model for reasoning-heavy analysis (/score, /optimize) and all
+     * workflow building/editing.
+     */
+    private const MODEL_SMART = 'claude-sonnet-4-6';
+
+    /** Simple analysis commands — fast model, no graph schema. */
+    private const FAST_COMMANDS = [
+        '/explain', '/steps', '/summarize', '/review',
+        '/risks', '/time', '/roles', '/save', '/reset', '/intro',
+    ];
+
+    /** Reasoning-heavy analysis — smart model, but still no graph schema. */
+    private const SMART_ANALYSIS_COMMANDS = ['/score', '/optimize'];
+
+    /**
+     * Max output tokens for a chat turn. Kept generous so longer replies (and
+     * full graphs) have ample room to finish without being truncated.
      */
     private const MAX_TOKENS = 8000;
+
+    /** How many recent conversation turns to send. Older turns are trimmed. */
+    private const HISTORY_LIMIT = 10;
 
     public function chat(Request $request): JsonResponse
     {
         $validated = $request->validate([
             'message'                  => ['required', 'string', 'max:8000'],
+            'command'                  => ['nullable', 'string', 'max:50'],
             'workflow_name'            => ['nullable', 'string', 'max:255'],
             'workflow'                 => ['nullable', 'array'],
             'workflow.nodes'           => ['nullable', 'array'],
@@ -57,10 +84,15 @@ class WorkflowChatController extends Controller
 
         $workflowName = $validated['workflow_name'] ?? 'Workflow';
         $responseLength = $validated['response_length'] ?? 'medium';
+        $command = isset($validated['command']) ? strtolower(trim($validated['command'])) : null;
         $workflow = [
             'nodes' => $validated['workflow']['nodes'] ?? [],
             'edges' => $validated['workflow']['edges'] ?? [],
         ];
+
+        // Pick the model and decide whether this turn can change the graph (and
+        // therefore needs the full schema + a position-preserving context).
+        [$model, $includeSchema] = $this->route($command);
 
         // Never call the API without a key — degrade to a friendly, change-free
         // reply so the chat still works out of the box and the app never breaks.
@@ -76,10 +108,17 @@ class WorkflowChatController extends Controller
         }
 
         try {
+            // Building turns need a position-preserving listing so Claude can
+            // return a complete graph with ids/positions intact; analysis turns
+            // only need the cheap arrow-flow overview.
+            $context = $includeSchema
+                ? $this->compactWorkflow($workflow)
+                : $this->flowWorkflow($workflow);
+
             $response = Prism::text()
-                ->using(Provider::Anthropic, self::MODEL)
-                ->withSystemPrompt($this->systemPrompt($workflowName, $workflow, $responseLength))
-                ->withMessages($this->buildMessages($validated['conversation_history'] ?? [], $validated['message']))
+                ->using(Provider::Anthropic, $model)
+                ->withSystemPrompt($this->systemPrompt($responseLength, $includeSchema))
+                ->withMessages($this->buildMessages($workflowName, $context, $validated['conversation_history'] ?? [], $validated['message']))
                 ->withMaxTokens(self::MAX_TOKENS)
                 ->withClientOptions(['timeout' => 60]) // bound the request so it can't hang
                 ->asText();
@@ -101,7 +140,7 @@ class WorkflowChatController extends Controller
             return response()->json([
                 'success'  => true,
                 'source'   => 'ai',
-                'model'    => self::MODEL,
+                'model'    => $model,
                 'reply'    => $reply !== '' ? $reply : 'Done.',
                 'workflow' => $newWorkflow,
                 'run'      => $run,
@@ -125,100 +164,74 @@ class WorkflowChatController extends Controller
     }
 
     /**
-     * System prompt: defines the assistant's role and, critically, the exact
-     * graph schema it must produce so changes apply cleanly to the canvas.
+     * Route a turn to a model and decide whether it needs the graph schema.
      *
-     * @param  array{nodes: array<mixed>, edges: array<mixed>}  $workflow
-     * @param  string  $responseLength  'short' | 'medium' | 'detailed' — controls reply verbosity.
+     * Simple analysis commands → fast model, no schema. Reasoning-heavy analysis
+     * (/score, /optimize) → smart model, no schema. Everything else — explicit
+     * build commands and free-text ("build me a…") — defaults to the smart model
+     * WITH the schema, since it may change the canvas.
+     *
+     * @return array{0: string, 1: bool}  [model, includeSchema]
      */
-    private function systemPrompt(string $workflowName, array $workflow, string $responseLength = 'medium'): string
+    private function route(?string $command): array
     {
-        $current = json_encode($workflow, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+        if ($command !== null && in_array($command, self::FAST_COMMANDS, true)) {
+            return [self::MODEL_FAST, false];
+        }
+        if ($command !== null && in_array($command, self::SMART_ANALYSIS_COMMANDS, true)) {
+            return [self::MODEL_SMART, false];
+        }
+
+        return [self::MODEL_SMART, true];
+    }
+
+    /**
+     * Concise system prompt. The graph schema (everything needed to emit a valid,
+     * applyable graph) is appended ONLY when the turn can change the canvas — so
+     * analysis turns stay cheap and stay well under ~200 words.
+     */
+    private function systemPrompt(string $responseLength, bool $includeSchema): string
+    {
         $lengthGuidance = $this->responseLengthGuidance($responseLength);
 
-        return <<<PROMPT
-You are Claude, a friendly workflow-building assistant embedded in a visual workflow editor. You help users design, understand, and modify automation workflows on a node-and-edge canvas.
+        $base = <<<PROMPT
+You are Claude, a friendly assistant embedded in a visual workflow editor. You help users understand, analyze, and modify node-and-edge automation workflows.
 
-The workflow the user is currently editing is named "{$workflowName}". Its current graph is:
+Respond with ONLY a single JSON object — no markdown, no code fences, no text outside it:
+{"reply": "...", "workflow": null | {"nodes": [...], "edges": [...]}, "run": true | false}
 
-{$current}
-
-# Graph schema
-
-A workflow is a JSON object with two arrays, "nodes" and "edges".
-
-A node is:
-{
-  "id": "kebab-case-unique-id",
-  "type": "trigger" | "action" | "decision" | "output",
-  "position": { "x": <number>, "y": <number> },
-  "data": { "kind": <same as type>, "label": "Human Friendly Step Name", "description": "optional short description" }
-}
-
-Rules for nodes:
-- "data.kind" MUST equal "type".
-- "trigger" = how the workflow starts (use exactly one, usually at the far left).
-- "action" = a step that does work.
-- "decision" = a branch point with a yes/no question; it has a "true" and a "false" outgoing path.
-- "output" = a terminal/end step.
-- Lay nodes out left to right: increase x by ~260 per step, keep the main line at y≈160. For decision branches, fan out to y≈60 (true) and y≈260 (false).
-- Reuse existing node ids when modifying an existing step; create new descriptive ids for new steps.
-
-An edge is:
-{ "id": "unique-edge-id", "source": "<node id>", "target": "<node id>", "sourceHandle": "true" | "false" (decision nodes ONLY; omit entirely otherwise) }
-
-Rules for edges:
-- Every non-trigger node should be reachable from the trigger.
-- "sourceHandle" belongs ONLY on edges whose "source" is a "decision" node. For an edge leaving a decision node, set "sourceHandle" to "true" or "false".
-- ALL other edges MUST NOT include a "sourceHandle" property at all — omit the key entirely (do not set it to null, "", or any other value). This applies to edges leaving "trigger", "action", and "output" nodes. For example, an edge from "escalate-to-manager" (an action node) to the next step within that same branch must have NO "sourceHandle" — only the decision node carries "true"/"false". A stray "sourceHandle" on a non-decision edge stops the executor from following it, so the branch halts early.
-- Every "decision" node MUST have BOTH a "true" edge and a "false" edge — always emit two edges from a decision, one with "sourceHandle": "true" and one with "sourceHandle": "false". Never leave a branch unconnected.
-- No dangling nodes: every branch path must end at its own "output" node. A branch that stops at an action node with no outgoing edge is invalid.
-- Every non-"output" node MUST have at least one outgoing edge. "trigger", "action", and "decision" nodes always continue somewhere; only "output" nodes are allowed to have no outgoing edge.
-- The graph must be complete: every path starting from the trigger must eventually reach an "output" node. There are no loose ends.
-
-CRITICAL — fancy-flow does NOT support merging branches. After a decision node splits into two paths, each path MUST be completely independent and end with its OWN output node. NEVER connect two separate branch paths back into a single shared node — doing so causes the workflow to stop early. Every branch must have its own complete path: its own action nodes AND its own output node at the end. No two branches may share a target node. This means a node can never have incoming edges from two different branches.
-
-Example of WRONG structure (a shared node is reused by both branches — never do this):
-  Decision --true--> Path A --> Shared Node --> Output
-  Decision --false--> Path B --> Shared Node --> Output
-
-Example of CORRECT structure (each branch is fully independent with its own output):
-  Decision --true--> Path A --> Output A
-  Decision --false--> Path B --> Output B
-
-Apply this rule to every workflow you generate. No exceptions.
-
-Before returning the graph, validate it against these rules: confirm every decision node has both a "true" and "false" edge, confirm that NO edge leaving a non-decision node has a "sourceHandle" property, confirm no node receives incoming edges from two different branch paths (no shared/merge nodes), confirm every non-output node has at least one outgoing edge, and confirm every branch path from the trigger reaches its own output node. Fix any violations (give each branch its own action and output nodes, and strip any "sourceHandle" from non-decision edges) before responding.
-
-# Available commands
-
-The user can invoke these slash commands (the app expands each into a fuller instruction before you see it):
-- /build, /add, /modify, /remove, /connect, /branch, /expand — create or change the workflow; return the COMPLETE updated graph in "workflow".
-- /explain, /steps, /summarize, /review, /optimize, /suggest, /example — analyze or answer; set "workflow" to null.
-- /steps — list every step in the workflow as a simple numbered list in plain English a non-technical person could follow, using simple action verbs, with a one sentence description for each step; put the list in "reply" and set "workflow" to null.
-- /score — score the workflow's health out of 100 across completeness, clarity, efficiency, error handling, and best practices; return a markdown-formatted report in "reply" and set "workflow" to null.
-- /risks — identify the top 3-5 potential risks or failure points, each with a severity (High/Medium/Low), a one sentence description, and a brief mitigation; return markdown with bold risk names and colored severity indicators in "reply" and set "workflow" to null.
-- /time — estimate real-world time to complete the workflow, broken down per major step with a total min/max range and bottleneck notes; return a markdown table (Step, Min Time, Max Time) plus a summary in "reply" and set "workflow" to null.
-- /roles — identify the job roles or departments involved, listing which steps each is responsible for and what their involvement looks like; return a markdown list with bold role names in "reply" and set "workflow" to null.
-- /run, /save, /clear, /reset — run, save, or reset the workflow (handled by the app).
-
-# How to respond
-
-Always respond with ONLY a single JSON object — no markdown, no code fences, no commentary outside the JSON. The object has:
-{
-  "reply": "A short, friendly, plain-English message to show in the chat. Explain what you did or answer the question.",
-  "workflow": null | { "nodes": [...], "edges": [...] },
-  "run": true | false
-}
-
-- {$lengthGuidance}
-- When you have multiple options or suggestions, ALWAYS format them as a numbered list with each item on its own line starting with a number and period (1. 2. 3.). The UI will automatically render these as clickable buttons for the user. Never tell the user you cannot render buttons — you can, through numbered lists.
-- When the user asks you to build, add, modify, remove, connect, or branch steps, set "workflow" to the COMPLETE updated graph (all nodes and all edges, not just the changes). Preserve unrelated existing nodes/edges, ids, and positions. Then describe what changed in "reply".
-- When the user only asks to explain, summarize, review, or optimize — or just chats — set "workflow" to null and put your answer in "reply".
-- When asked to briefly introduce this workflow (e.g. on load), give a concise, friendly 2-3 sentence introduction in "reply" — what type of process it is, what business problem it solves, and one key thing to know — set "workflow" to null and "run" to false, and don't begin the reply with the word "I".
-- Never set "workflow" unless you intend to change the canvas. Returning the same graph unchanged is fine if no change is needed, but prefer null when nothing changed.
-- Set "run" to true ONLY when the user asks to run, execute, start, or test the workflow (e.g. "run it", "run the workflow", "execute this", "give it a test run"). This triggers the actual workflow run on the canvas — do not describe a simulated run yourself; the canvas handles it and shows results in the run feed. You may set both "workflow" and "run" when the user asks to build/modify the workflow and then run it. In all other cases set "run" to false.
+- "reply": a short, friendly, plain-English message. {$lengthGuidance}
+- Set "workflow" to null unless you are actually changing the canvas.
+- When you offer options or suggestions, format them as a numbered list (1. 2. 3.), each on its own line — the UI renders these as clickable buttons. Never say you can't render buttons; you can, through numbered lists.
+- Set "run" to true ONLY when the user asks to run, execute, start, or test the workflow; the canvas performs the run and shows results. Otherwise set it false.
+- When asked to introduce this workflow, give a concise, friendly 2-3 sentence intro (what it does, the problem it solves, one key thing to know); set "workflow" to null, "run" to false, and don't begin with the word "I".
 PROMPT;
+
+        if (! $includeSchema) {
+            return $base;
+        }
+
+        $schema = <<<PROMPT
+
+
+# Editing the workflow
+When the user asks to build, add, modify, remove, connect, or branch steps, return the COMPLETE updated graph in "workflow" (every node and edge, not just the change), then describe what changed in "reply".
+
+Node: {"id": "kebab-id", "type": "trigger|action|decision|output", "position": {"x": <number>, "y": <number>}, "data": {"kind": <same as type>, "label": "Step Name", "description": "optional"}}
+Edge: {"id": "edge-id", "source": "<node id>", "target": "<node id>", "sourceHandle": "true|false"}
+
+Rules:
+- "data.kind" MUST equal "type". Use exactly one "trigger"; "output" nodes are terminal.
+- "sourceHandle" appears ONLY on edges leaving a "decision" node ("true" or "false"). On every trigger/action/output edge, omit the key entirely (not null, not "").
+- Every "decision" has BOTH a "true" and a "false" edge. Every non-output node has at least one outgoing edge. Every path ends at its own "output" node.
+- Branches NEVER merge: after a decision, each branch is fully independent with its own action and output nodes — no two edges may target the same node. (Merging makes the run stop early.)
+- Lay out left to right: +260 x per step, main line y≈160, decision branches y≈60 (true) / y≈260 (false).
+- When modifying existing steps, REUSE their ids AND positions; create new descriptive ids for new steps; preserve unrelated nodes/edges unchanged.
+
+Validate against these rules before responding and fix any violation.
+PROMPT;
+
+        return $base.$schema;
     }
 
     /**
@@ -236,16 +249,24 @@ PROMPT;
     }
 
     /**
-     * Build the Prism message list from prior turns plus the new user message.
+     * Build the Prism message chain:
+     *   1. the current workflow, compressed (so every turn is grounded in the
+     *      live canvas without resending the full JSON),
+     *   2. a short assistant acknowledgement (keeps roles alternating),
+     *   3. the last {@see HISTORY_LIMIT} turns of history (older turns trimmed),
+     *   4. the current user message.
      *
      * @param  array<int, array{role: string, content: string}>  $history
      * @return array<int, \Prism\Prism\Contracts\Message>
      */
-    private function buildMessages(array $history, string $message): array
+    private function buildMessages(string $workflowName, string $context, array $history, string $message): array
     {
-        $messages = [];
+        $messages = [
+            new UserMessage("Current workflow \"{$workflowName}\":\n{$context}"),
+            new AssistantMessage('Got it — I have the current workflow in mind.'),
+        ];
 
-        foreach ($history as $turn) {
+        foreach (array_slice($history, -self::HISTORY_LIMIT) as $turn) {
             $role = $turn['role'] ?? null;
             $content = (string) ($turn['content'] ?? '');
             if ($content === '') {
@@ -259,6 +280,168 @@ PROMPT;
         $messages[] = new UserMessage($message);
 
         return $messages;
+    }
+
+    /**
+     * Compressed, position-preserving listing of the workflow for BUILDING turns.
+     * Far smaller than the full pretty-printed JSON, but still carries every id,
+     * type, position, label, and description so Claude can return a complete graph
+     * that preserves existing ids and canvas positions.
+     *
+     * @param  array{nodes: array<mixed>, edges: array<mixed>}  $workflow
+     */
+    private function compactWorkflow(array $workflow): string
+    {
+        $nodes = is_array($workflow['nodes'] ?? null) ? $workflow['nodes'] : [];
+        $edges = is_array($workflow['edges'] ?? null) ? $workflow['edges'] : [];
+
+        if ($nodes === []) {
+            return '(empty — no steps yet)';
+        }
+
+        $lines = ['NODES (id | type | x,y | label | description):'];
+        foreach ($nodes as $n) {
+            if (! is_array($n) || ! isset($n['id'])) {
+                continue;
+            }
+            $id = (string) $n['id'];
+            $type = (string) ($n['type'] ?? ($n['data']['kind'] ?? 'action'));
+            $x = $n['position']['x'] ?? 0;
+            $y = $n['position']['y'] ?? 0;
+            $label = (string) ($n['data']['label'] ?? '');
+            $line = "{$id} | {$type} | {$x},{$y} | {$label}";
+            $desc = isset($n['data']['description']) ? trim((string) $n['data']['description']) : '';
+            if ($desc !== '') {
+                $line .= " | {$desc}";
+            }
+            $lines[] = $line;
+        }
+
+        $lines[] = 'EDGES (source -> target [handle]):';
+        foreach ($edges as $e) {
+            if (! is_array($e) || ! isset($e['source'], $e['target'])) {
+                continue;
+            }
+            $handle = (isset($e['sourceHandle']) && in_array($e['sourceHandle'], ['true', 'false'], true))
+                ? " [{$e['sourceHandle']}]"
+                : '';
+            $lines[] = ((string) $e['source']).' -> '.((string) $e['target']).$handle;
+        }
+
+        return implode("\n", $lines);
+    }
+
+    /**
+     * Ultra-compressed arrow-flow overview for ANALYSIS turns, e.g.
+     *   [Trigger: Start] -> [Action: Step 1] -> [Decision: Check?] -> true: [Output: Done] / false: [Output: Failed]
+     * Labels and structure only — no ids or positions, since these turns never
+     * return a graph.
+     *
+     * @param  array{nodes: array<mixed>, edges: array<mixed>}  $workflow
+     */
+    private function flowWorkflow(array $workflow): string
+    {
+        $nodes = is_array($workflow['nodes'] ?? null) ? $workflow['nodes'] : [];
+        $edges = is_array($workflow['edges'] ?? null) ? $workflow['edges'] : [];
+
+        if ($nodes === []) {
+            return '(empty — no steps yet)';
+        }
+
+        // Index nodes by id and capture outgoing edges (with their handle).
+        $byId = [];
+        foreach ($nodes as $n) {
+            if (is_array($n) && isset($n['id'])) {
+                $byId[(string) $n['id']] = $n;
+            }
+        }
+
+        $out = [];
+        $targets = [];
+        foreach ($edges as $e) {
+            if (! is_array($e) || ! isset($e['source'], $e['target'])) {
+                continue;
+            }
+            $out[(string) $e['source']][] = [
+                'target' => (string) $e['target'],
+                'handle' => $e['sourceHandle'] ?? null,
+            ];
+            $targets[(string) $e['target']] = true;
+        }
+
+        $label = function (string $id) use ($byId): string {
+            $n = $byId[$id] ?? null;
+            $type = is_array($n) ? ($n['type'] ?? ($n['data']['kind'] ?? 'step')) : 'step';
+            $text = is_array($n) ? ($n['data']['label'] ?? $id) : $id;
+
+            return '['.ucfirst((string) $type).': '.$text.']';
+        };
+
+        $visited = [];
+        $render = function (string $id) use (&$render, &$visited, $out, $label): string {
+            if (isset($visited[$id])) {
+                return $label($id).' (…)'; // already drawn — avoid looping
+            }
+            $visited[$id] = true;
+
+            $next = $out[$id] ?? [];
+            if ($next === []) {
+                return $label($id);
+            }
+
+            // Single, unlabelled continuation → linear arrow.
+            if (count($next) === 1 && ($next[0]['handle'] === null || $next[0]['handle'] === '')) {
+                return $label($id).' -> '.$render($next[0]['target']);
+            }
+
+            // Branching (decision) → labelled paths joined by " / ".
+            $branches = [];
+            foreach ($next as $edge) {
+                $tag = ($edge['handle'] === 'true' || $edge['handle'] === 'false') ? $edge['handle'].': ' : '';
+                $branches[] = $tag.$render($edge['target']);
+            }
+
+            return $label($id).' -> '.implode(' / ', $branches);
+        };
+
+        // Start at trigger nodes; fall back to nodes with no incoming edge; then
+        // to the first node, so something always renders.
+        $starts = [];
+        foreach ($byId as $id => $n) {
+            $type = is_array($n) ? ($n['type'] ?? ($n['data']['kind'] ?? null)) : null;
+            if ($type === 'trigger') {
+                $starts[] = (string) $id;
+            }
+        }
+        if ($starts === []) {
+            foreach ($byId as $id => $n) {
+                if (! isset($targets[$id])) {
+                    $starts[] = (string) $id;
+                }
+            }
+        }
+        if ($starts === []) {
+            $starts = array_slice(array_keys($byId), 0, 1);
+        }
+
+        $lines = [];
+        foreach ($starts as $start) {
+            $lines[] = $render((string) $start);
+        }
+
+        // Surface anything the traversal never reached so nothing is silently dropped.
+        $orphans = [];
+        foreach ($byId as $id => $n) {
+            if (! isset($visited[$id])) {
+                $orphans[] = $label((string) $id);
+            }
+        }
+        $flow = implode("\n", $lines);
+        if ($orphans !== []) {
+            $flow .= "\n(unconnected: ".implode(', ', $orphans).')';
+        }
+
+        return $flow;
     }
 
     /**
