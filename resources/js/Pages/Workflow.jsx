@@ -1834,11 +1834,19 @@ const toastMetaByType = {
     },
 };
 
-// Celebratory confetti burst — fired when a run reaches a "Complete"/"Closed"
-// node (see the executor wrapper below).
+// Celebratory confetti burst — fired when a run reaches a successful terminal
+// output node (see the executor wrapper below). Tinted with the app's
+// purple/blue accent palette (Tailwind indigo/blue/violet/purple 400–500) so it
+// reads as a branded "celebration moment" rather than a generic burst.
+const CONFETTI_COLORS = ['#6366f1', '#818cf8', '#3b82f6', '#60a5fa', '#8b5cf6', '#a78bfa', '#a855f7'];
 const fireConfetti = () => {
-    confetti({ particleCount: 120, spread: 75, origin: { y: 0.7 }, zIndex: 9999 });
-    confetti({ particleCount: 60, spread: 110, startVelocity: 45, origin: { y: 0.7 }, zIndex: 9999 });
+    const base = { colors: CONFETTI_COLORS, zIndex: 9999, disableForReducedMotion: true };
+    // Center pop — a dense, wide arc from just below mid-screen.
+    confetti({ ...base, particleCount: 140, spread: 80, startVelocity: 45, origin: { y: 0.7 } });
+    confetti({ ...base, particleCount: 70, spread: 120, startVelocity: 55, scalar: 1.2, origin: { y: 0.7 } });
+    // Two side cannons firing inward for a fuller, more impressive spread.
+    confetti({ ...base, particleCount: 60, angle: 60, spread: 70, startVelocity: 50, origin: { x: 0, y: 0.8 } });
+    confetti({ ...base, particleCount: 60, angle: 120, spread: 70, startVelocity: 50, origin: { x: 1, y: 0.8 } });
 };
 
 // Apply a target zoom to FlowEditor's canvas. FlowEditor bundles its own copy of
@@ -2376,9 +2384,18 @@ function WorkflowEditor() {
                     .map((e) => e.id);
                 if (chosen.length) setDoneEdgeIds((prev) => [...new Set([...prev, ...chosen])]);
             }
+            // Celebrate only a *successful* terminal output: this is the run's
+            // success path (errors route to handleNodeError, never here), the node
+            // is a terminal output, and its label reads as a positive outcome
+            // ("Order Complete!", "Bug Closed", "Approved", "Resolved", "…Done").
+            // Negative output nodes ("Order Declined", "Deny Refund", "Request
+            // Changes") fall through and stay quiet. A short delay lets the final
+            // node's edge/animation land first so the burst feels like a payoff.
             const label = node?.data?.label ?? '';
-            if (/complete|closed/i.test(label)) {
-                fireConfetti();
+            const isSuccessfulCompletion =
+                node?.data?.kind === 'output' && /\b(complete|closed|approved|resolved|done)\b/i.test(label);
+            if (isSuccessfulCompletion) {
+                setTimeout(fireConfetti, 300);
             }
             if (inflightRef.current > 0) inflightRef.current -= 1;
             // Terminal output reached — stop the edge flow promptly.

@@ -1,5 +1,5 @@
 import { useLayoutEffect, useRef, useState } from 'react';
-import { motion } from 'framer-motion';
+import { AnimatePresence, motion } from 'framer-motion';
 import { Pencil } from 'lucide-react';
 import WorkflowContentRenderer from './WorkflowContentRenderer';
 
@@ -18,6 +18,15 @@ import WorkflowContentRenderer from './WorkflowContentRenderer';
  * smoothly between the one-line view and the taller textarea.
  */
 const MAX_HEIGHT = 76; // ~3 lines at text-sm
+const MAX_LENGTH = 500; // hard cap on description length
+
+// Counter color reflects how close the user is to the limit: gray normally,
+// amber in the last 100 chars (400–499), red once the cap is hit (500).
+const counterColorClass = (len) => {
+    if (len >= MAX_LENGTH) return 'text-red-500 dark:text-red-400';
+    if (len >= MAX_LENGTH - 100) return 'text-amber-500 dark:text-amber-400';
+    return 'text-gray-400 dark:text-gray-500';
+};
 
 export default function DescriptionField({ value, onChange, placeholder = 'Add a description...' }) {
     const [editing, setEditing] = useState(false);
@@ -45,28 +54,49 @@ export default function DescriptionField({ value, onChange, placeholder = 'Add a
     return (
         <motion.div layout transition={{ type: 'spring', stiffness: 420, damping: 34 }} className="w-full">
             {editing ? (
-                <textarea
-                    ref={taRef}
-                    value={value}
-                    placeholder={placeholder}
-                    rows={1}
-                    onChange={(e) => {
-                        onChange(e.target.value);
-                        autoSize();
-                    }}
-                    onBlur={() => setEditing(false)}
-                    onKeyDown={(e) => {
-                        if (e.key === 'Enter' && !e.shiftKey) {
-                            e.preventDefault();
-                            setEditing(false);
-                        } else if (e.key === 'Escape') {
-                            e.preventDefault();
-                            setEditing(false);
-                        }
-                    }}
-                    style={{ maxHeight: MAX_HEIGHT }}
-                    className="block w-full resize-none overflow-y-auto rounded-md border border-indigo-300 bg-white px-2 py-1 text-sm leading-relaxed text-gray-600 outline-none ring-2 ring-indigo-500/15 placeholder-gray-400 dark:border-indigo-500/40 dark:bg-gray-800/70 dark:text-gray-300 dark:placeholder-gray-500"
-                />
+                // Wrapper is relative so the live character counter can sit in the
+                // textarea's bottom-right corner while it's being edited.
+                <div className="relative">
+                    <textarea
+                        ref={taRef}
+                        value={value}
+                        placeholder={placeholder}
+                        rows={1}
+                        maxLength={MAX_LENGTH}
+                        onChange={(e) => {
+                            // Hard-stop at the cap; maxLength already blocks typing,
+                            // this guards paste/programmatic input too.
+                            onChange(e.target.value.slice(0, MAX_LENGTH));
+                            autoSize();
+                        }}
+                        onBlur={() => setEditing(false)}
+                        onKeyDown={(e) => {
+                            if (e.key === 'Enter' && !e.shiftKey) {
+                                e.preventDefault();
+                                setEditing(false);
+                            } else if (e.key === 'Escape') {
+                                e.preventDefault();
+                                setEditing(false);
+                            }
+                        }}
+                        style={{ maxHeight: MAX_HEIGHT }}
+                        className="block w-full resize-none overflow-y-auto rounded-md border border-indigo-300 bg-white px-2 py-1 pb-5 text-sm leading-relaxed text-gray-600 outline-none ring-2 ring-indigo-500/15 placeholder-gray-400 dark:border-indigo-500/40 dark:bg-gray-800/70 dark:text-gray-300 dark:placeholder-gray-500"
+                    />
+                    {/* Counter only renders while editing; fades in via framer-motion. */}
+                    <AnimatePresence>
+                        <motion.span
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            transition={{ duration: 0.18 }}
+                            className={`pointer-events-none absolute bottom-1 right-2 select-none text-[10px] font-medium tabular-nums ${counterColorClass(
+                                (value || '').length,
+                            )}`}
+                        >
+                            {(value || '').length} / {MAX_LENGTH}
+                        </motion.span>
+                    </AnimatePresence>
+                </div>
             ) : (
                 // Display state: a clickable region (not a <button>, since the
                 // rendered Markdown is block-level content that can't nest inside
