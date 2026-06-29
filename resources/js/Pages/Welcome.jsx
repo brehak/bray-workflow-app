@@ -19,7 +19,18 @@ const stagger = {
     visible: { transition: { staggerChildren: 0.12, delayChildren: 0.08 } },
 };
 
+// Pick a friendly greeting based on the current hour of day.
+function getGreeting() {
+    const hour = new Date().getHours();
+    if (hour >= 5 && hour < 12) return 'Good morning ☀️';
+    if (hour >= 12 && hour < 17) return 'Good afternoon 👋';
+    if (hour >= 17 && hour < 21) return 'Good evening 🌙';
+    return 'Working late? 🦉';
+}
+
 export default function Welcome() {
+    const greeting = getGreeting();
+
     return (
         <>
             <Head title="Fancy Workflows — Build it once." />
@@ -62,6 +73,16 @@ export default function Welcome() {
                     {/* Hero */}
                     <div className="bg-gradient-to-b from-blue-100/50 to-transparent dark:from-blue-950/40 dark:via-purple-950/20 dark:to-transparent">
                         <section className="mx-auto w-full max-w-5xl px-6 pb-20 pt-20 text-center sm:pb-28 sm:pt-28 lg:pb-32 lg:pt-40">
+                        {/* Subtle, time-of-day greeting — a small personal touch above the headline. */}
+                        <motion.p
+                            initial={{ opacity: 0, y: 8 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ duration: 0.8, ease: 'easeOut' }}
+                            className="mb-3 text-sm font-medium text-gray-500 dark:text-gray-400 sm:mb-4"
+                        >
+                            {greeting}
+                        </motion.p>
+
                         <motion.div initial="hidden" animate="visible" variants={stagger}>
                             <motion.div variants={fadeUp}>
                                 <span className="inline-block rounded-full border border-gray-200 bg-white px-4 py-1.5 text-xs font-medium text-gray-600 shadow-sm dark:border-gray-800 dark:bg-gray-900 dark:text-gray-400">
