@@ -176,6 +176,7 @@ export const DEFAULT_SETTINGS = {
     toastPosition: 'bottom-right', // 'bottom-right' | 'bottom-left' | 'top-right' | 'top-left'
     toastDuration: '3000', // ms, as a string ('2000' | '3000' | '5000')
     showStepCounts: true, // show "X steps · Y connections" on cards
+    headerCollapsed: false, // editor header collapsed to a thin pinned bar
     // ── Claude AI ──
     chatPanelDefault: 'auto', // 'auto' (open on load) | 'closed' (open manually)
     chatPanelWidth: 320, // px width of the right chat/config panel (resizable, 250–600)

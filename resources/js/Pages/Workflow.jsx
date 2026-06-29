@@ -20,6 +20,7 @@ import {
     FolderOpen,
     Folder,
     ChevronDown,
+    ChevronUp,
     Plus,
     Tags as TagsIcon,
     BookOpen,
@@ -51,7 +52,7 @@ import ThemeToggle from '../Components/ThemeToggle';
 import Tooltip from '../Components/Tooltip';
 import { applyFriendlyNodeLabels } from '../lib/friendlyPalette';
 import { registerNoteKind, makeNoteNode } from '../lib/noteNode';
-import { getSettings, autoSaveIntervalMs, animationSpeedFactor, toastDurationMs, defaultZoomLevel, SETTINGS_EVENT } from '../lib/settings';
+import { getSettings, saveSettings, autoSaveIntervalMs, animationSpeedFactor, toastDurationMs, defaultZoomLevel, SETTINGS_EVENT } from '../lib/settings';
 import { incrementRunsCompleted } from '../lib/runs';
 import { getCustomFolders, addCustomFolder } from '../lib/folders';
 import '../../css/flow-animations.css';
@@ -2462,6 +2463,19 @@ function WorkflowEditor() {
         };
     }, []);
 
+    // ── Collapsible / pinnable header ──────────────────────────────────────
+    // `headerCollapsed` pins the header shut to a slim bar with a few essential
+    // actions (persisted to settings.headerCollapsed). It stays collapsed until the
+    // user clicks the expand button — no hover preview.
+    const [headerCollapsed, setHeaderCollapsed] = useState(() => getSettings().headerCollapsed);
+    const toggleHeaderCollapsed = useCallback(() => {
+        setHeaderCollapsed((prev) => {
+            const next = !prev;
+            saveSettings({ headerCollapsed: next });
+            return next;
+        });
+    }, []);
+
     // Apply the "Animation speed" preference to the module-level run pacing.
     useEffect(() => {
         setAnimSpeedFactor(animationSpeedFactor(userSettings));
@@ -3677,11 +3691,123 @@ function WorkflowEditor() {
                 {/* Accent banner showing which template is active. transition-colors
                     so the bar eases between accents when switching templates. */}
                 <div className={`h-1 w-full transition-colors duration-200 ${accent.bar}`} />
-                {/* Responsive header: one row on lg, two stacked rows on md and below.
-                    Top row = brand + nav; bottom row = tags + status + actions. Tags
-                    and nav are placed twice (CSS-toggled per breakpoint); the heavy
-                    action toolbar is a single instance shared by all layouts. */}
-                <header className="sticky top-0 z-50 flex flex-col gap-1.5 border-b border-gray-200/60 bg-white/70 px-4 py-2 backdrop-blur-md transition-colors duration-300 supports-[backdrop-filter]:bg-white/60 dark:border-gray-800/60 dark:bg-gray-900/70 dark:supports-[backdrop-filter]:bg-gray-900/60 lg:flex-row lg:items-center lg:justify-between lg:gap-3 lg:px-6 lg:py-2.5">
+                {/* Collapsible / pinnable header. The full header (brand, tags, action
+                    toolbar, nav — one row on lg, two stacked rows below) can collapse to
+                    a slim bar with a few essential actions (expand, name, Save, Guide,
+                    Saved Workflows, Back home), so the canvas and chat reclaim the
+                    vertical space. The collapsed/expanded choice persists to
+                    settings.headerCollapsed and stays put until the expand button is
+                    clicked. framer-motion animates the height collapse/expand. */}
+                <header className="sticky top-0 z-50 border-b border-gray-200/60 bg-white/70 backdrop-blur-md transition-colors duration-300 supports-[backdrop-filter]:bg-white/60 dark:border-gray-800/60 dark:bg-gray-900/70 dark:supports-[backdrop-filter]:bg-gray-900/60">
+                    {/* Slim collapsed bar — expand · name · Save · Guide · Saved Workflows · Back home.
+                        Each action mirrors its full-header counterpart exactly. */}
+                    <AnimatePresence initial={false}>
+                        {headerCollapsed && (
+                            <motion.div
+                                key="header-collapsed-bar"
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: 1 }}
+                                exit={{ opacity: 0 }}
+                                transition={{ duration: 0.2, ease: 'easeOut' }}
+                                className="flex items-center gap-1.5 px-4 py-1.5 lg:px-6"
+                            >
+                                <Tooltip label="Expand header" placement="bottom">
+                                    <button
+                                        type="button"
+                                        onClick={toggleHeaderCollapsed}
+                                        aria-label="Expand header"
+                                        aria-expanded={false}
+                                        className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-gray-200 bg-gray-100/80 text-gray-600 transition-colors hover:bg-gray-200/80 dark:border-gray-700 dark:bg-gray-800/80 dark:text-gray-300 dark:hover:bg-gray-700/80"
+                                    >
+                                        <ChevronDown size={15} aria-hidden="true" />
+                                    </button>
+                                </Tooltip>
+                                <WorkflowIcon size={15} className={`shrink-0 ${accent.text}`} aria-hidden="true" />
+                                <span className="min-w-0 flex-1 truncate text-sm font-semibold text-gray-900 dark:text-white">
+                                    {name || 'Untitled workflow'}
+                                </span>
+
+                                {/* Save — same handler as the full toolbar's Save button. */}
+                                <Tooltip label={justSaved ? 'Saved!' : 'Save Workflow'} placement="bottom">
+                                    <button
+                                        type="button"
+                                        onClick={saveWorkflow}
+                                        aria-label={justSaved ? 'Workflow saved' : 'Save workflow'}
+                                        className={`inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full transition-colors hover:bg-black/5 dark:hover:bg-white/10 ${justSaved ? 'text-green-600 dark:text-green-400' : accent.text}`}
+                                    >
+                                        {justSaved ? <Check size={15} aria-hidden="true" /> : <Save size={15} aria-hidden="true" />}
+                                    </button>
+                                </Tooltip>
+
+                                {/* Guide — opens the beginner's guide modal. */}
+                                <Tooltip label="Beginner's guide" placement="bottom">
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowGuide(true)}
+                                        aria-label="Open beginner's guide"
+                                        className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-gray-700 transition-colors hover:bg-black/5 dark:text-gray-200 dark:hover:bg-white/10"
+                                    >
+                                        <BookOpen size={15} aria-hidden="true" />
+                                    </button>
+                                </Tooltip>
+
+                                {/* Saved Workflows — same guarded navigation as the full header. */}
+                                <Tooltip label="Browse your saved workflows" placement="bottom">
+                                    <button
+                                        type="button"
+                                        onClick={() => guardedNavigate('/workflows-list')}
+                                        aria-label="Saved Workflows"
+                                        className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-gray-700 transition-colors hover:bg-black/5 dark:text-gray-200 dark:hover:bg-white/10"
+                                    >
+                                        <FolderOpen size={15} aria-hidden="true" />
+                                    </button>
+                                </Tooltip>
+
+                                {/* Back home — same guarded navigation as the full header. */}
+                                <Tooltip label="Back home" placement="bottom">
+                                    <button
+                                        type="button"
+                                        onClick={() => guardedNavigate('/')}
+                                        aria-label="Back home"
+                                        className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-gray-700 transition-colors hover:bg-black/5 dark:text-gray-200 dark:hover:bg-white/10"
+                                    >
+                                        <Home size={15} aria-hidden="true" />
+                                    </button>
+                                </Tooltip>
+                            </motion.div>
+                        )}
+                    </AnimatePresence>
+
+                    {/* Full header content. Collapses to height 0 when pinned shut.
+                        `inert` while collapsed keeps the hidden buttons out of the tab
+                        order; expanded, every button is fully interactive again. */}
+                    <motion.div
+                        initial={false}
+                        animate={{
+                            height: headerCollapsed ? 0 : 'auto',
+                            opacity: headerCollapsed ? 0 : 1,
+                        }}
+                        transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
+                        aria-hidden={headerCollapsed ? 'true' : undefined}
+                        {...(headerCollapsed ? { inert: '' } : {})}
+                        className={`relative flex flex-col gap-1.5 px-4 py-2 lg:flex-row lg:items-center lg:justify-between lg:gap-3 lg:px-6 lg:py-2.5 ${
+                            headerCollapsed ? 'overflow-hidden' : 'overflow-visible'
+                        }`}
+                    >
+                        {/* Collapse (pin) button on the far-left edge of the header. */}
+                        {!headerCollapsed && (
+                            <Tooltip label="Collapse header" placement="bottom">
+                                <button
+                                    type="button"
+                                    onClick={toggleHeaderCollapsed}
+                                    aria-label="Collapse header"
+                                    aria-expanded={true}
+                                    className="order-first inline-flex h-7 w-7 shrink-0 items-center justify-center self-start rounded-full border border-gray-200 bg-gray-100/80 text-gray-600 transition-colors hover:bg-gray-200/80 dark:border-gray-700 dark:bg-gray-800/80 dark:text-gray-300 dark:hover:bg-gray-700/80 lg:self-center"
+                                >
+                                    <ChevronUp size={15} aria-hidden="true" />
+                                </button>
+                            </Tooltip>
+                        )}
                     {/* ── Row 1 (on lg: the left side) ─────────────────────────── */}
                     <div className="flex min-w-0 items-center justify-between gap-2 lg:flex-1 lg:justify-start lg:gap-3">
                         {/* Brand: logo + name + description (md+) + tags (lg). Grows to
@@ -4019,6 +4145,7 @@ function WorkflowEditor() {
                             )}
                         </div>
                     </div>
+                    </motion.div>
                 </header>
 
                 {/* Soft separator between the header and the editor content */}
