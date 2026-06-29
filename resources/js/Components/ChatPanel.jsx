@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Sparkles, SlashSquare, ArrowUp, Check, Play, Trash2, Brain } from 'lucide-react';
+import { Sparkles, SlashSquare, ArrowUp, Check, Play, Trash2, Brain, Copy } from 'lucide-react';
 import { ContentRenderer } from '@particle-academy/react-fancy';
 import { CHAT_STORAGE_PREFIX, getSettings } from '../lib/settings';
 
@@ -542,6 +542,59 @@ const ensureSeqPast = (messages) => {
     }
 };
 
+/**
+ * CopyButton — a small icon button that copies an assistant message's raw text
+ * to the clipboard. It sits in the top-right corner of the bubble and only fades
+ * in on hover (the parent bubble carries the `group` class). After a successful
+ * copy it swaps the copy icon for a checkmark for 2 seconds, cross-fading between
+ * the two with framer-motion. Styled for both dark and light mode.
+ */
+function CopyButton({ text }) {
+    const [copied, setCopied] = useState(false);
+    const timerRef = useRef(null);
+
+    // Clear the pending reset timer if the bubble unmounts mid-confirmation.
+    useEffect(() => () => clearTimeout(timerRef.current), []);
+
+    const copy = async () => {
+        try {
+            await navigator.clipboard.writeText(text ?? '');
+            setCopied(true);
+            clearTimeout(timerRef.current);
+            timerRef.current = setTimeout(() => setCopied(false), 2000);
+        } catch {
+            // Clipboard unavailable (permissions, insecure context) — fail quietly.
+        }
+    };
+
+    return (
+        <button
+            type="button"
+            onClick={copy}
+            aria-label={copied ? 'Copied' : 'Copy message'}
+            title={copied ? 'Copied' : 'Copy message'}
+            className="absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded-md text-gray-400 opacity-0 shadow-sm backdrop-blur transition-opacity hover:bg-gray-100 hover:text-gray-600 focus:opacity-100 focus:outline-none group-hover:opacity-100 dark:text-gray-500 dark:hover:bg-gray-700/70 dark:hover:text-gray-200"
+        >
+            <AnimatePresence mode="wait" initial={false}>
+                <motion.span
+                    key={copied ? 'check' : 'copy'}
+                    initial={{ opacity: 0, scale: 0.8 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.8 }}
+                    transition={{ duration: 0.15, ease: 'easeOut' }}
+                    className="flex items-center justify-center"
+                >
+                    {copied ? (
+                        <Check size={13} className="text-emerald-500 dark:text-emerald-400" />
+                    ) : (
+                        <Copy size={13} />
+                    )}
+                </motion.span>
+            </AnimatePresence>
+        </button>
+    );
+}
+
 function MessageBubble({ message, onOptionSelect, optionsDisabled }) {
     const isUser = message.role === 'user';
     // Auto-introductions slide in from the side (rather than the usual gentle
@@ -582,8 +635,8 @@ function MessageBubble({ message, onOptionSelect, optionsDisabled }) {
                                 : isIntro
                                   ? // Auto-intros get a subtle indigo tint + accent border so they
                                     // read as an automatic introduction, not a reply to the user.
-                                    'rounded-2xl rounded-tl-sm border border-indigo-200/80 bg-indigo-50/70 px-3 py-2 text-sm text-gray-700 shadow-sm backdrop-blur dark:border-indigo-400/30 dark:bg-indigo-500/10 dark:text-gray-100'
-                                  : 'rounded-2xl rounded-tl-sm border border-gray-200/70 bg-white/70 px-3 py-2 text-sm text-gray-700 shadow-sm backdrop-blur dark:border-gray-700/60 dark:bg-gray-800/60 dark:text-gray-200'
+                                    'group relative rounded-2xl rounded-tl-sm border border-indigo-200/80 bg-indigo-50/70 py-2 pl-3 pr-8 text-sm text-gray-700 shadow-sm backdrop-blur dark:border-indigo-400/30 dark:bg-indigo-500/10 dark:text-gray-100'
+                                  : 'group relative rounded-2xl rounded-tl-sm border border-gray-200/70 bg-white/70 py-2 pl-3 pr-8 text-sm text-gray-700 shadow-sm backdrop-blur dark:border-gray-700/60 dark:bg-gray-800/60 dark:text-gray-200'
                         }
                     >
                         {/* User turns are always plain text; Claude's replies route through
@@ -605,6 +658,8 @@ function MessageBubble({ message, onOptionSelect, optionsDisabled }) {
                                 Running on canvas
                             </span>
                         )}
+                        {/* Hover-reveal copy button — copies this reply's raw text. */}
+                        {!isUser && <CopyButton text={message.text} />}
                     </div>
                 </div>
             </div>
