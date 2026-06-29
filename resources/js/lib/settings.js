@@ -178,6 +178,7 @@ export const DEFAULT_SETTINGS = {
     showStepCounts: true, // show "X steps · Y connections" on cards
     // ── Claude AI ──
     chatPanelDefault: 'auto', // 'auto' (open on load) | 'closed' (open manually)
+    chatPanelWidth: 320, // px width of the right chat/config panel (resizable, 250–600)
     chatResponseLength: 'medium', // 'short' | 'medium' | 'detailed' — sent to the chat API
     forceDemo: false, // force Demo Mode even when an API key is configured
     showAiReasoning: true, // show Claude's 🤖 narration lines in the run feed

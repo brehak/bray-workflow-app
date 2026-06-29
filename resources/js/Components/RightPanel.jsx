@@ -1,9 +1,20 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '@particle-academy/react-fancy';
 import { MessageSquare, SlidersHorizontal, PanelRightClose, Sparkles, Wand2 } from 'lucide-react';
 import ChatPanel from './ChatPanel';
 import NodeConfigPanel from './NodeConfigPanel';
+import { getSettings, saveSettings } from '../lib/settings';
+
+// Resizable-width bounds for the panel. The handle on its left edge drags within
+// this range; double-clicking resets to DEFAULT_PANEL_WIDTH. The chosen width is
+// persisted to settings.chatPanelWidth so it survives reloads. The sibling editor
+// column is `flex-1`, so the canvas simply reflows to fill whatever space is left.
+const MIN_PANEL_WIDTH = 250;
+const MAX_PANEL_WIDTH = 600;
+const DEFAULT_PANEL_WIDTH = 320;
+const clampPanelWidth = (w) =>
+    Math.min(MAX_PANEL_WIDTH, Math.max(MIN_PANEL_WIDTH, Math.round(w)));
 
 /**
  * RightPanel — the smart right-hand sidebar that hosts both the Claude chat
@@ -38,6 +49,62 @@ export default function RightPanel({
     const [view, setView] = useState('chat'); // 'chat' | 'config'
     const [open, setOpen] = useState(defaultOpen);
     const prevNodeId = useRef(selectedNode?.id ?? null);
+
+    // ── Resizable width ──────────────────────────────────────────────────────
+    // Seed from the persisted setting (clamped, in case an out-of-range value was
+    // stored). While dragging, the live width is mirrored into `dragRef.latest`
+    // so the mouse-up handler can persist the final value without a stale closure.
+    const [width, setWidth] = useState(() => clampPanelWidth(getSettings().chatPanelWidth ?? DEFAULT_PANEL_WIDTH));
+    const dragRef = useRef(null);
+
+    const handleDragMove = useCallback((e) => {
+        const drag = dragRef.current;
+        if (!drag) return;
+        // The handle is on the LEFT edge, so dragging left (smaller clientX)
+        // widens the panel and dragging right narrows it.
+        const next = clampPanelWidth(drag.startWidth + (drag.startX - e.clientX));
+        drag.latest = next;
+        setWidth(next);
+    }, []);
+
+    const stopDrag = useCallback(() => {
+        window.removeEventListener('mousemove', handleDragMove);
+        window.removeEventListener('mouseup', stopDrag);
+        document.body.style.removeProperty('cursor');
+        document.body.style.removeProperty('user-select');
+        if (dragRef.current) {
+            saveSettings({ chatPanelWidth: dragRef.current.latest });
+            dragRef.current = null;
+        }
+    }, [handleDragMove]);
+
+    const startDrag = useCallback(
+        (e) => {
+            e.preventDefault();
+            dragRef.current = { startX: e.clientX, startWidth: width, latest: width };
+            // Suppress text selection / show the resize cursor for the whole drag.
+            document.body.style.cursor = 'col-resize';
+            document.body.style.userSelect = 'none';
+            window.addEventListener('mousemove', handleDragMove);
+            window.addEventListener('mouseup', stopDrag);
+        },
+        [width, handleDragMove, stopDrag],
+    );
+
+    // Double-click the handle to snap back to the default width.
+    const resetWidth = useCallback(() => {
+        setWidth(DEFAULT_PANEL_WIDTH);
+        saveSettings({ chatPanelWidth: DEFAULT_PANEL_WIDTH });
+    }, []);
+
+    // Safety net: if the panel unmounts mid-drag, drop the global listeners.
+    useEffect(
+        () => () => {
+            window.removeEventListener('mousemove', handleDragMove);
+            window.removeEventListener('mouseup', stopDrag);
+        },
+        [handleDragMove, stopDrag],
+    );
 
     // A prompt queued from the config panel's "Ask Claude" buttons. The bumping
     // `nonce` makes every click a distinct value so ChatPanel re-sends even when
@@ -100,7 +167,33 @@ export default function RightPanel({
     // On small screens the wrapper collapses to normal flow so the panel keeps
     // its natural, content-driven height.
     return (
-        <div className="w-80 shrink-0 lg:relative">
+        <div className="shrink-0 lg:relative" style={{ width: `${width}px` }}>
+            {/* Drag handle on the LEFT edge — grab and drag left to widen, right to
+                narrow; double-click to reset. Shown only at `lg`, where the editor
+                and panel sit side by side. The grip's vertical dots signal it's
+                draggable and the whole handle highlights on hover. */}
+            <div
+                role="separator"
+                aria-orientation="vertical"
+                aria-label="Resize chat panel (double-click to reset)"
+                title="Drag to resize · double-click to reset"
+                onMouseDown={startDrag}
+                onDoubleClick={resetWidth}
+                className="group absolute inset-y-0 left-0 z-30 hidden w-3 -translate-x-1/2 cursor-col-resize lg:block"
+            >
+                {/* Full-height hairline that brightens on hover. */}
+                <span className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-transparent transition-colors group-hover:bg-indigo-400/70" />
+                {/* Centered grip with three vertical dots. */}
+                <span className="absolute left-1/2 top-1/2 flex -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-1 rounded-full border border-gray-200 bg-white px-1 py-1.5 shadow-sm transition-colors group-hover:border-indigo-300 group-hover:bg-indigo-50 dark:border-gray-700 dark:bg-gray-800 dark:group-hover:border-indigo-500/60 dark:group-hover:bg-indigo-500/10">
+                    {[0, 1, 2].map((i) => (
+                        <span
+                            key={i}
+                            className="h-1 w-1 rounded-full bg-gray-400 transition-colors group-hover:bg-indigo-500 dark:bg-gray-500"
+                        />
+                    ))}
+                </span>
+            </div>
+
             <aside className="flex flex-col overflow-hidden rounded-xl border border-gray-200 bg-white/80 shadow-sm backdrop-blur-md dark:border-gray-800 dark:bg-gray-900/70 lg:absolute lg:inset-0">
             {/* Segmented toggle: Chat / Config */}
             <div className="flex shrink-0 gap-1 border-b border-gray-100 p-2 dark:border-gray-800">
