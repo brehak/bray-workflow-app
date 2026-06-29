@@ -33,15 +33,24 @@ const seoDefaults = {
 // of the wrong theme on load or when navigating between pages.
 applyTheme(getInitialTheme());
 
+// Gentle fade with a very subtle scale (no y-axis slide, so navigating can't
+// nudge layout or briefly overflow the viewport). Scale stays <= 1.0 so it never
+// pushes content past the edges and triggers a scrollbar flicker. Easing differs
+// by direction: easeOut on enter (decelerates into place), easeIn on exit
+// (accelerates away) — defined per-variant so AnimatePresence applies the right
+// curve to each phase.
 const pageVariants = {
-    initial: { opacity: 0, y: 16 },
-    animate: { opacity: 1, y: 0 },
-    exit:    { opacity: 0, y: -16 },
-};
-
-const pageTransition = {
-    duration: 0.25,
-    ease: 'easeInOut',
+    initial: { opacity: 0, scale: 0.98 },
+    animate: {
+        opacity: 1,
+        scale: 1,
+        transition: { duration: 0.2, ease: 'easeOut' },
+    },
+    exit: {
+        opacity: 0,
+        scale: 0.98,
+        transition: { duration: 0.2, ease: 'easeIn' },
+    },
 };
 
 // Animates the current page in/out. We use Inertia's `App` render-prop so React
@@ -62,7 +71,7 @@ function AnimatedPage({ Component, props, pageKey }) {
                 initial="initial"
                 animate="animate"
                 exit="exit"
-                transition={pageTransition}
+                style={{ transformOrigin: 'center top', willChange: 'opacity, transform' }}
             >
                 <Component {...props} />
             </motion.div>
