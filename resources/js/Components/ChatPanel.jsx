@@ -613,14 +613,8 @@ function MessageBubble({ message, onOptionSelect, optionsDisabled }) {
             className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}
         >
             <div className={`flex max-w-[85%] gap-2 ${isUser ? 'flex-row-reverse' : 'flex-row'}`}>
-                {!isUser && (
-                    <span
-                        aria-hidden="true"
-                        className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-indigo-500 to-fuchsia-500 text-white shadow-sm"
-                    >
-                        <Sparkles size={13} />
-                    </span>
-                )}
+                {/* The Claude/AI avatar lives only in the panel header now — keeping it
+                    off each bubble frees up horizontal space for the message text. */}
                 <div className="flex min-w-0 flex-col">
                     {isIntro && (
                         <p className="mb-1 flex items-center gap-1 pl-1 text-[10px] font-medium uppercase tracking-wider text-gray-400 dark:text-gray-500">
@@ -911,6 +905,21 @@ export default function ChatPanel({ workflow, workflowName, onApplyWorkflow, onR
         const el = scrollRef.current;
         if (el) el.scrollTop = el.scrollHeight;
     }, [messages, loading]);
+
+    // Auto-grow the composer textarea as the user types so their message stays
+    // fully visible, capped at four lines. We reset to `auto` first to let it
+    // shrink back when text is deleted (or after a send clears the draft), then
+    // size to the content up to the four-line ceiling, scrolling beyond that.
+    // The actual height animates smoothly via the CSS transition on the element.
+    useEffect(() => {
+        const el = inputRef.current;
+        if (!el) return;
+        el.style.height = 'auto';
+        const lineHeight = parseFloat(getComputedStyle(el).lineHeight) || 20;
+        const maxHeight = lineHeight * 4 + 12; // four lines + the textarea's py-1.5 padding
+        el.style.height = `${Math.min(el.scrollHeight, maxHeight)}px`;
+        el.style.overflowY = el.scrollHeight > maxHeight ? 'auto' : 'hidden';
+    }, [draft]);
 
     // Fire the canvas's real Run button. Returns true if a run actually started
     // (false if it's already running or the controls aren't present).
@@ -1355,7 +1364,7 @@ export default function ChatPanel({ workflow, workflowName, onApplyWorkflow, onR
                             onKeyDown={onKeyDown}
                             rows={1}
                             placeholder={loading ? 'Claude is thinking…' : 'Message Claude or type /'}
-                            className="max-h-28 flex-1 resize-none bg-transparent py-1.5 text-sm text-gray-800 placeholder:text-gray-400 focus:outline-none dark:text-gray-100 dark:placeholder:text-gray-500"
+                            className="flex-1 resize-none overflow-y-hidden whitespace-pre-wrap break-words bg-transparent py-1.5 text-sm text-gray-800 transition-[height] duration-150 ease-out placeholder:text-gray-400 focus:outline-none dark:text-gray-100 dark:placeholder:text-gray-500"
                         />
                         <button
                             type="button"
